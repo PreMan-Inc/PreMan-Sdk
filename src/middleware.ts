@@ -1,5 +1,6 @@
 import { PremanAuthError, PremanPolicyDeniedError } from "./errors.js";
 import { PremanClient } from "./client.js";
+import type { VerifyTokenIdentity } from "./types.js";
 
 export type HeaderLike = Headers | Record<string, string | string[] | undefined>;
 
@@ -13,11 +14,16 @@ export async function verifyBearerToken(
   headers: HeaderLike,
   options: RequireScopeOptions,
 ): Promise<{
+  identity: VerifyTokenIdentity;
   tokenId?: string;
   agentId?: string;
   customerId?: string;
   scopes: string[];
 }> {
+  if (typeof options.mcpId !== "string" || !options.mcpId.trim()) {
+    throw new PremanAuthError("mcpId is required to verify a Bearer token.");
+  }
+
   const token = readBearerToken(headers);
   if (!token) {
     throw new PremanAuthError("Missing Authorization Bearer token.");
@@ -33,10 +39,12 @@ export async function verifyBearerToken(
     throw new PremanPolicyDeniedError(`Token is not valid for scope ${options.requiredScope}.`);
   }
 
+  const identity = result.identity ?? {};
   return omitUndefined({
-    tokenId: result.tokenId,
-    agentId: result.agentId,
-    customerId: result.customerId,
+    identity,
+    tokenId: identity.tokenId ?? result.tokenId,
+    agentId: identity.agentId ?? result.agentId,
+    customerId: identity.customerId ?? result.customerId,
     scopes: result.scopes,
   });
 }

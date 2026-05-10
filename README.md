@@ -215,14 +215,17 @@ Working today:
 - `registerEndpoints()` -> creates or updates a Flow playground session
 - `deployMcp()` -> creates a hosted MCP from endpoint definitions
 - `createToken()` -> mints a scoped hosted MCP consumer token
+- `verifyToken()` / `verifyBearerToken()` -> verifies hosted MCP consumer tokens and scopes
+- `audit()` -> writes custom non-MCP agent events into PreMan audit logs
+- `fromOpenApi()` / `fromPostmanCollection()` -> converts API docs into endpoint definitions
+- framework examples for Express, Fastify, Next.js, and Hono in `examples/frameworks`
 - `preman` CLI -> setup, register, deploy, token minting, status
 
 Planned next:
 
-- SDK-side token verification middleware for customer backends
-- custom audit event ingestion for non-MCP agent actions
-- OpenAPI/Postman import helpers
-- framework examples for Express, Fastify, Next.js, and Hono
+- retry/idempotency controls for write operations
+- richer CLI import commands for OpenAPI/Postman files
+- generated policy previews before token minting
 
 Hosted MCP calls are already authenticated, scoped, and audited by PreMan.
 

@@ -5,7 +5,7 @@ import { readConfig, writeConfig } from "./config.js";
 import type { EndpointDefinition } from "./types.js";
 
 type Command = "init" | "register" | "deploy" | "token" | "status" | "help";
-const VERSION = "0.1.4";
+const VERSION = "0.2.0";
 
 async function main(): Promise<void> {
   const [, , rawCommand = "help", ...args] = process.argv;

@@ -128,19 +128,62 @@ export class PremanClient {
   }
 
   async verifyToken(request: VerifyTokenRequest): Promise<VerifyTokenResponse> {
+    requireString(request.mcpId, "mcpId");
     requireString(request.token, "token");
-    void request;
-    throw new PremanConfigError(
-      "verifyToken is not exposed by the hosted PreMan API yet. Hosted MCP calls are scoped and verified by PreMan automatically; use createToken for consumer access today.",
+    const response = await this.request<Record<string, unknown>>(
+      `/hosted-mcps/${encodeURIComponent(request.mcpId)}/tokens/verify`,
+      {
+        method: "POST",
+        body: omitUndefined({
+          token: request.token,
+          required_scope: request.requiredScope,
+        }),
+      },
     );
+
+    const valid = response["valid"];
+    if (typeof valid !== "boolean") {
+      throw new PremanError("Invalid verifyToken response from PreMan API: expected boolean `valid` field.", {
+        body: response,
+      });
+    }
+
+    const identity = normalizeVerifyTokenIdentity(objectAt(response, "identity"));
+    const topLevelIdentity = normalizeVerifyTokenIdentity(response);
+    const normalizedIdentity = omitUndefined({
+      tokenId: identity.tokenId ?? topLevelIdentity.tokenId,
+      agentId: identity.agentId ?? topLevelIdentity.agentId,
+      customerId: identity.customerId ?? topLevelIdentity.customerId,
+    });
+
+    return {
+      valid,
+      scopes: stringArrayAt(response, "scopes"),
+      identity: normalizedIdentity,
+      tokenId: normalizedIdentity.tokenId,
+      agentId: normalizedIdentity.agentId,
+      customerId: normalizedIdentity.customerId,
+      expiresAt: nullableStringAt(response, "expires_at") ?? undefined,
+    };
   }
 
   async audit(event: AuditEvent): Promise<AuditLogResponse> {
     requireString(event.action, "action");
-    void event;
-    throw new PremanConfigError(
-      "Custom audit event ingestion is not exposed by the hosted PreMan API yet. MCP tool calls are already audited in the hosted workspace.",
-    );
+    const response = await this.request<Record<string, unknown>>("/audit/events", {
+      method: "POST",
+      body: omitUndefined({
+        agent_id: event.agentId,
+        customer_id: event.customerId,
+        action: event.action,
+        resource: event.resource,
+        outcome: event.outcome,
+        metadata: event.metadata,
+      }),
+    });
+    return {
+      id: stringAt(response, "id"),
+      createdAt: stringAt(response, "created_at") || stringAt(response, "createdAt"),
+    };
   }
 
   dashboardUrl(path = "/dashboard"): string {
@@ -269,6 +312,23 @@ function nullableStringAt(value: Record<string, unknown>, key: string): string |
 function numberAt(value: Record<string, unknown>, key: string): number {
   const item = value[key];
   return typeof item === "number" ? item : 0;
+}
+
+function stringArrayAt(value: Record<string, unknown>, key: string): string[] {
+  const item = value[key];
+  return Array.isArray(item) ? item.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+function normalizeVerifyTokenIdentity(value: Record<string, unknown>): {
+  tokenId?: string;
+  agentId?: string;
+  customerId?: string;
+} {
+  return omitUndefined({
+    tokenId: stringAt(value, "token_id") || stringAt(value, "tokenId") || undefined,
+    agentId: stringAt(value, "agent_id") || stringAt(value, "agentId") || undefined,
+    customerId: stringAt(value, "customer_id") || stringAt(value, "customerId") || undefined,
+  });
 }
 
 function normalizeInstallSnippet(value: Record<string, unknown>): HostedMcpInstallSnippet {

@@ -118,13 +118,20 @@ export type AuditLogResponse = {
 
 export type VerifyTokenRequest = {
   token: string;
-  mcpId?: string;
+  mcpId: string;
   requiredScope?: string;
+};
+
+export type VerifyTokenIdentity = {
+  tokenId?: string;
+  agentId?: string;
+  customerId?: string;
 };
 
 export type VerifyTokenResponse = {
   valid: boolean;
   scopes: string[];
+  identity: VerifyTokenIdentity;
   tokenId?: string;
   agentId?: string;
   customerId?: string;

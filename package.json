@@ -1,6 +1,6 @@
 {
   "name": "preman-sdk",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "SDK and CLI for turning APIs into hosted MCP servers with scoped consumer tokens.",
   "type": "module",
   "license": "MIT",
@@ -16,6 +16,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./importers": {
+      "types": "./dist/importers.d.ts",
+      "import": "./dist/importers.js"
     }
   },
   "main": "./dist/index.js",
