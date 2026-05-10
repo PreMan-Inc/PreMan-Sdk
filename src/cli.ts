@@ -5,7 +5,7 @@ import { readConfig, writeConfig } from "./config.js";
 import type { EndpointDefinition } from "./types.js";
 
 type Command = "init" | "register" | "deploy" | "token" | "status" | "help";
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 
 async function main(): Promise<void> {
   const [, , rawCommand = "help", ...args] = process.argv;
@@ -133,10 +133,17 @@ Global install:
 Options:
   --api-url                 Override API URL (default: https://flow.opentest.live)
   --app-url                 Override app URL (default: https://www.flowtest.opentest.live)
+  --upstream                Your real API base URL. Example: https://api.company.com
   --session-id              Reuse a Flow playground session id
   --upstream-secret         Upstream API secret stored with a hosted MCP deploy
   --consumer-label          Initial consumer token label (default: default-consumer)
   --version                 Print CLI version
+
+Upstream:
+  PreMan combines --upstream with each endpoint path.
+  Example: --upstream https://api.company.com + /auth/login = https://api.company.com/auth/login
+  Do not use a marketing site unless that site is also your API.
+  localhost only works for local testing; hosted MCPs need a deployed or tunneled API URL.
 
 The CLI is the on-ramp. Use the hosted workspace at https://www.flowtest.opentest.live
 to see customer tokens, revoke access, inspect audit logs, and review agent activity.

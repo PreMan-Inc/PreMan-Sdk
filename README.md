@@ -58,6 +58,22 @@ Register the endpoints into a Flow playground session:
 npx preman-sdk register --file endpoints.json --upstream https://api.company.com
 ```
 
+`--upstream` is the base URL of the API PreMan should call. It is not your marketing site and it is not the hosted PreMan workspace URL.
+
+For example, if your endpoint file contains `POST /auth/login` and you pass:
+
+```bash
+--upstream https://api.company.com
+```
+
+PreMan tests and hosts the tool against:
+
+```text
+https://api.company.com/auth/login
+```
+
+Use a deployed or tunneled API URL for hosted MCPs. `http://localhost:8000` only works from your own machine; PreMan's hosted runtime cannot reach your laptop unless you expose it with a tunnel such as ngrok or Cloudflare Tunnel.
+
 Deploy the same endpoints as a hosted MCP:
 
 ```bash
@@ -149,6 +165,23 @@ npx preman-sdk register --file endpoints.json --upstream https://api.company.com
 npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.company.com
 npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
 ```
+
+### What `--upstream` Means
+
+`--upstream` is the base URL for your real backend API:
+
+```text
+--upstream + endpoint path = full URL PreMan calls
+```
+
+Examples:
+
+```text
+https://api.company.com + /auth/login = https://api.company.com/auth/login
+https://staging.company.com/api + /orders = https://staging.company.com/api/orders
+```
+
+Do not use `https://preman.live` unless your actual API is hosted there. For local APIs, use a public tunnel before deploying a hosted MCP.
 
 ## Configuration
 
