@@ -10,8 +10,8 @@ export type PremanConfig = {
 };
 
 const DEFAULT_CONFIG: PremanConfig = {
-  apiUrl: "https://api.preman.live",
-  appUrl: "https://preman.live",
+  apiUrl: "https://flow.opentest.live",
+  appUrl: "https://www.flowtest.opentest.live",
 };
 
 export function defaultConfigPath(): string {
@@ -33,4 +33,3 @@ export async function writeConfig(config: Partial<PremanConfig>, path = defaultC
   await writeFile(path, JSON.stringify(next, null, 2), { mode: 0o600 });
   return next;
 }
-

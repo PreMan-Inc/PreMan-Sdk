@@ -13,8 +13,8 @@ import {
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
 
-const DEFAULT_API_URL = "https://api.preman.live";
-const DEFAULT_APP_URL = "https://preman.live";
+const DEFAULT_API_URL = "https://flow.opentest.live";
+const DEFAULT_APP_URL = "https://www.flowtest.opentest.live";
 
 export class PremanClient {
   readonly apiUrl: string;

@@ -108,8 +108,8 @@ Usage:
   preman token --mcp-id mcp_123 --scopes auth:login --ttl 900
   preman status
 
-The CLI is the on-ramp. Use the hosted control plane at https://preman.live
-to mint customer tokens, revoke access, inspect audit logs, and manage MCPs.
+The CLI is the on-ramp. Use the hosted workspace at https://www.flowtest.opentest.live
+to see customer tokens, revoke access, inspect audit logs, and review agent activity.
 `);
 }
 
