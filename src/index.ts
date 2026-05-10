@@ -7,6 +7,7 @@ export {
 } from "./errors.js";
 export { readBearerToken, verifyBearerToken } from "./middleware.js";
 export { fromOpenApi, fromPostmanCollection } from "./importers.js";
+export { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 export type {
   AuditEvent,
   AuditLogResponse,

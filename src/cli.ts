@@ -2,10 +2,11 @@
 import { readFile } from "fs/promises";
 import { PremanClient } from "./client.js";
 import { readConfig, writeConfig } from "./config.js";
+import { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 import type { EndpointDefinition } from "./types.js";
 
 type Command = "init" | "register" | "deploy" | "token" | "status" | "help";
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 
 async function main(): Promise<void> {
   const [, , rawCommand = "help", ...args] = process.argv;
@@ -64,6 +65,9 @@ async function main(): Promise<void> {
     const upstreamBaseUrl = valueFor(args, "--upstream");
     const file = valueFor(args, "--file");
     if (!upstreamBaseUrl) throw new Error("deploy requires --upstream https://api.example.com");
+    if (isLocalUpstreamUrl(upstreamBaseUrl) && !hasFlag(args, "--allow-local")) {
+      throw new Error(localUpstreamMessage(upstreamBaseUrl));
+    }
     if (!file) throw new Error("deploy requires --file endpoints.json");
     const endpoints = JSON.parse(await readFile(file, "utf8")) as EndpointDefinition[];
     const result = await client.deployMcp(omitUndefined({
@@ -109,6 +113,10 @@ function valueFor(args: string[], flag: string): string | undefined {
   return args[index + 1];
 }
 
+function hasFlag(args: string[], flag: string): boolean {
+  return args.includes(flag);
+}
+
 function numberFor(args: string[], flag: string): number | undefined {
   const value = valueFor(args, flag);
   if (!value) return undefined;
@@ -134,6 +142,7 @@ Options:
   --api-url                 Override API URL (default: https://flow.opentest.live)
   --app-url                 Override app URL (default: https://www.flowtest.opentest.live)
   --upstream                Your real API base URL. Example: https://api.company.com
+  --allow-local             Allow localhost/private upstreams for local-only previews
   --session-id              Reuse a Flow playground session id
   --upstream-secret         Upstream API secret stored with a hosted MCP deploy
   --consumer-label          Initial consumer token label (default: default-consumer)

@@ -83,6 +83,8 @@ https://api.company.com/auth/login
 
 Use a deployed or tunneled API URL for hosted MCPs. `http://localhost:8000` only works from your own machine; PreMan's hosted runtime cannot reach your laptop unless you expose it with a tunnel such as ngrok or Cloudflare Tunnel.
 
+The CLI blocks `localhost` and private-network upstreams during `deploy` by default so you do not create a hosted MCP that cannot reach your API. Use `--allow-local` only for local-only previews.
+
 Deploy the same endpoints as a hosted MCP:
 
 ```bash
