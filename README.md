@@ -7,7 +7,7 @@
 
 PreMan turns REST API endpoints into hosted MCP servers that AI agents can call with scoped consumer tokens.
 
-Use this SDK when you want to register endpoints from code or CI, deploy them as hosted MCP tools, and mint scoped tokens for agents, customers, or temporary sessions. The hosted workspace at [flowtest.opentest.live](https://www.flowtest.opentest.live) is where your team sees hosted MCPs, customer tokens, audit logs, and the company knowledge graph generated from agent activity.
+Use this SDK when you want to register endpoints from code or CI, import API docs or existing remote MCP servers, deploy them behind a PreMan gateway URL, and mint scoped tokens for agents, customers, or temporary sessions. The hosted workspace at [flowtest.opentest.live](https://www.flowtest.opentest.live) is where your team sees hosted MCPs, customer tokens, audit logs, and the company knowledge graph generated from agent activity.
 
 ```text
 Your API / CI job
@@ -106,6 +106,47 @@ npx preman-sdk token \
 
 Then open [flowtest.opentest.live](https://www.flowtest.opentest.live) to inspect the hosted MCP, copy the install snippet, revoke tokens, and review audit logs.
 
+## MCP Gateway Imports
+
+PreMan can sit in front of APIs you discover from docs or MCP servers you already run. Agents install one PreMan URL; PreMan stores the approved tool catalog, applies auth and policy, and logs every call.
+
+Create a hosted MCP from public API docs:
+
+```bash
+npx preman-sdk import-docs \
+  --url https://docs.company.com/api-reference \
+  --name "Company API MCP" \
+  --upstream https://api.company.com \
+  --max-endpoints 120
+```
+
+Preview discovery without deploying:
+
+```bash
+npx preman-sdk import-docs \
+  --url https://docs.company.com/api-reference \
+  --preview
+```
+
+Put an existing remote MCP server behind a PreMan gateway:
+
+```bash
+npx preman-sdk import-remote-mcp \
+  --url https://mcp.company.com/mcp \
+  --name "Company MCP Proxy" \
+  --upstream-secret-env COMPANY_MCP_TOKEN \
+  --auth-type header \
+  --auth-name Authorization \
+  --auth-prefix "Bearer "
+```
+
+List the hosted MCPs in your workspace:
+
+```bash
+npx preman-sdk hosted-mcps
+npx preman-sdk hosted-mcps --id mcp_123
+```
+
 ## TypeScript SDK
 
 ```ts
@@ -151,6 +192,27 @@ const mcp = await preman.deployMcp({
 
 console.log(mcp.hostedUrl);
 console.log(mcp.installSnippet?.mcpJsonString);
+```
+
+Import docs or a remote MCP directly from TypeScript:
+
+```ts
+const docsMcp = await preman.importFromDocs({
+  docsUrl: "https://docs.company.com/api-reference",
+  name: "Company API MCP",
+  upstreamBaseUrl: "https://api.company.com",
+  maxEndpoints: 120,
+});
+
+const remoteMcp = await preman.importRemoteMcp({
+  mcpUrl: "https://mcp.company.com/mcp",
+  name: "Company MCP Proxy",
+  initialUpstreamSecret: process.env.COMPANY_MCP_TOKEN,
+  upstreamAuthStyle: { type: "header", name: "Authorization", prefix: "Bearer " },
+});
+
+console.log(docsMcp.hostedUrl);
+console.log(remoteMcp.installSnippet?.mcpJsonString);
 ```
 
 ## Token Scoping

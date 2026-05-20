@@ -6,6 +6,12 @@ import {
   type DeployMcpRequest,
   type DeployMcpResponse,
   type HostedMcpInstallSnippet,
+  type GetHostedMcpResponse,
+  type HostedMcpImportResponse,
+  type HostedMcpRecord,
+  type ImportFromDocsRequest,
+  type ImportRemoteMcpRequest,
+  type ListHostedMcpsResponse,
   type ListTokensRequest,
   type ListTokensResponse,
   type PremanClientOptions,
@@ -118,6 +124,69 @@ export class PremanClient {
       rawConsumerToken: nullableStringAt(response, "raw_consumer_token"),
       consumerToken: objectAt(response, "consumer_token"),
       installSnippet: normalizeInstallSnippet(objectAt(response, "install_snippet")),
+    };
+  }
+
+  async importFromDocs(request: ImportFromDocsRequest): Promise<HostedMcpImportResponse> {
+    requireString(request.docsUrl, "docsUrl");
+    const response = await this.request<Record<string, unknown>>("/hosted-mcps/import-from-docs", {
+      method: "POST",
+      body: omitUndefined({
+        docs_url: request.docsUrl,
+        name: request.name,
+        slug: request.slug,
+        upstream_base_url: request.upstreamBaseUrl,
+        upstream_auth_style: request.upstreamAuthStyle,
+        initial_upstream_secret: request.initialUpstreamSecret,
+        initial_upstream_secret_type: request.initialUpstreamSecretType,
+        access_mode: request.accessMode,
+        max_endpoints: request.maxEndpoints,
+        deploy: request.deploy,
+      }),
+      request: request.request,
+    });
+    return normalizeHostedMcpImport(response, this.appUrl);
+  }
+
+  async importRemoteMcp(request: ImportRemoteMcpRequest): Promise<HostedMcpImportResponse> {
+    requireString(request.mcpUrl, "mcpUrl");
+    const response = await this.request<Record<string, unknown>>("/hosted-mcps/import-remote-mcp", {
+      method: "POST",
+      body: omitUndefined({
+        mcp_url: request.mcpUrl,
+        name: request.name,
+        slug: request.slug,
+        upstream_auth_style: request.upstreamAuthStyle,
+        initial_upstream_secret: request.initialUpstreamSecret,
+        initial_upstream_secret_type: request.initialUpstreamSecretType,
+        access_mode: request.accessMode,
+      }),
+      request: request.request,
+    });
+    return normalizeHostedMcpImport(response, this.appUrl);
+  }
+
+  async listHostedMcps(): Promise<ListHostedMcpsResponse> {
+    const response = await this.request<Record<string, unknown>>("/hosted-mcps", { method: "GET" });
+    const hostedMcpsValue = response["hosted_mcps"];
+    const hostedMcps = Array.isArray(hostedMcpsValue)
+      ? hostedMcpsValue.filter((item): item is HostedMcpRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+      : [];
+    return {
+      hostedMcps,
+      total: numberAt(response, "total") || hostedMcps.length,
+      raw: response,
+    };
+  }
+
+  async getHostedMcp(mcpId: string): Promise<GetHostedMcpResponse> {
+    requireString(mcpId, "mcpId");
+    const response = await this.request<Record<string, unknown>>(`/hosted-mcps/${encodeURIComponent(mcpId)}`, {
+      method: "GET",
+    });
+    return {
+      hostedMcp: objectAt(response, "hosted_mcp") as HostedMcpRecord,
+      raw: response,
     };
   }
 
@@ -485,6 +554,27 @@ function normalizeInstallSnippet(value: Record<string, unknown>): HostedMcpInsta
   } as HostedMcpInstallSnippet;
 }
 
+function normalizeHostedMcpImport(response: Record<string, unknown>, appUrl: string): HostedMcpImportResponse {
+  const hosted = objectAt(response, "hosted_mcp") as HostedMcpRecord;
+  const installSnippet = objectAt(response, "install_snippet");
+  const mcpId = stringAt(hosted, "id");
+  const name = stringAt(hosted, "name");
+  const hostedUrl = nullableStringAt(response, "hosted_mcp_url");
+  return {
+    mcpId: mcpId || undefined,
+    name: name || undefined,
+    hostedUrl,
+    dashboardUrl: mcpId ? `${appUrl}/hosted-mcps/${encodeURIComponent(mcpId)}` : undefined,
+    hostedMcp: Object.keys(hosted).length ? hosted : null,
+    initialCredential: objectOrNullAt(response, "initial_credential"),
+    installSnippet: Object.keys(installSnippet).length ? normalizeInstallSnippet(installSnippet) : null,
+    preview: objectOrUndefinedAt(response, "preview"),
+    generatedSpec: objectOrUndefinedAt(response, "generated_spec"),
+    notice: stringAt(response, "notice") || undefined,
+    raw: response,
+  };
+}
+
 function normalizeTokenMetadata(value: unknown): TokenMetadata | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
@@ -499,6 +589,16 @@ function normalizeTokenMetadata(value: unknown): TokenMetadata | undefined {
     createdAt: nullableStringAt(record, "created_at") ?? nullableStringAt(record, "createdAt"),
     raw: record,
   };
+}
+
+function objectOrNullAt(value: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const item = objectAt(value, key);
+  return Object.keys(item).length ? item : null;
+}
+
+function objectOrUndefinedAt(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  const item = objectAt(value, key);
+  return Object.keys(item).length ? item : undefined;
 }
 
 function omitUndefined<T extends Record<string, unknown>>(value: T): T {

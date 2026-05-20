@@ -10,7 +10,21 @@ import { generateEndpointTypes } from "./typegen.js";
 import { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 import type { EndpointDefinition } from "./types.js";
 
-type Command = "init" | "register" | "deploy" | "token" | "tokens" | "status" | "import" | "apply" | "install-snippet" | "typegen" | "help";
+type Command =
+  | "init"
+  | "register"
+  | "deploy"
+  | "import-docs"
+  | "import-remote-mcp"
+  | "hosted-mcps"
+  | "token"
+  | "tokens"
+  | "status"
+  | "import"
+  | "apply"
+  | "install-snippet"
+  | "typegen"
+  | "help";
 const VERSION = "0.3.0";
 
 async function main(): Promise<void> {
@@ -81,6 +95,50 @@ async function main(): Promise<void> {
       request: { idempotencyKey: valueFor(args, "--idempotency-key") },
     }));
     console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "import-docs") {
+    const docsUrl = requiredValue(args, "--url", "import-docs requires --url https://docs.example.com/api");
+    const upstreamBaseUrl = valueFor(args, "--upstream");
+    if (upstreamBaseUrl && isLocalUpstreamUrl(upstreamBaseUrl) && !hasFlag(args, "--allow-local")) {
+      throw new Error(localUpstreamMessage(upstreamBaseUrl));
+    }
+    const result = await client.importFromDocs(omitUndefined({
+      docsUrl,
+      name: valueFor(args, "--name"),
+      slug: valueFor(args, "--slug"),
+      upstreamBaseUrl,
+      upstreamAuthStyle: upstreamAuthStyleFor(args),
+      initialUpstreamSecret: await upstreamSecretFor(args),
+      initialUpstreamSecretType: upstreamSecretTypeFor(args),
+      accessMode: accessModeFor(args),
+      maxEndpoints: numberFor(args, "--max-endpoints"),
+      deploy: !hasFlag(args, "--preview"),
+      request: { idempotencyKey: valueFor(args, "--idempotency-key") },
+    }));
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "import-remote-mcp") {
+    const result = await client.importRemoteMcp(omitUndefined({
+      mcpUrl: requiredValue(args, "--url", "import-remote-mcp requires --url https://mcp.example.com/mcp"),
+      name: valueFor(args, "--name"),
+      slug: valueFor(args, "--slug"),
+      upstreamAuthStyle: upstreamAuthStyleFor(args),
+      initialUpstreamSecret: await upstreamSecretFor(args),
+      initialUpstreamSecretType: upstreamSecretTypeFor(args),
+      accessMode: accessModeFor(args),
+      request: { idempotencyKey: valueFor(args, "--idempotency-key") },
+    }));
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "hosted-mcps") {
+    const id = valueFor(args, "--id") ?? valueFor(args, "--mcp-id");
+    console.log(JSON.stringify(id ? await client.getHostedMcp(id) : await client.listHostedMcps(), null, 2));
     return;
   }
 
@@ -304,6 +362,33 @@ async function upstreamSecretFor(args: string[]): Promise<string | undefined> {
   return resolveSecret(envName ? secretFromEnv(envName) : undefined);
 }
 
+function upstreamSecretTypeFor(args: string[]): "bearer" | "api_key" | "basic" | "custom" | undefined {
+  const value = valueFor(args, "--upstream-secret-type");
+  if (!value) return undefined;
+  if (["bearer", "api_key", "basic", "custom"].includes(value)) {
+    return value as "bearer" | "api_key" | "basic" | "custom";
+  }
+  throw new Error("--upstream-secret-type must be bearer, api_key, basic, or custom");
+}
+
+function accessModeFor(args: string[]): "public" | "token" | undefined {
+  const value = valueFor(args, "--access-mode");
+  if (!value) return undefined;
+  if (value === "public" || value === "token") return value;
+  throw new Error("--access-mode must be public or token");
+}
+
+function upstreamAuthStyleFor(args: string[]): { type?: "header" | "query" | "basic"; name?: string; prefix?: string } | undefined {
+  const type = valueFor(args, "--auth-type") as "header" | "query" | "basic" | undefined;
+  const name = valueFor(args, "--auth-name") ?? valueFor(args, "--auth-header");
+  const prefix = valueFor(args, "--auth-prefix");
+  if (type && !["header", "query", "basic"].includes(type)) {
+    throw new Error("--auth-type must be header, query, or basic");
+  }
+  const style = omitUndefined({ type, name, prefix });
+  return Object.keys(style).length ? style : undefined;
+}
+
 function printHelp(): void {
   console.log(`PreMan SDK CLI
 
@@ -311,6 +396,10 @@ Usage:
   npx preman-sdk init --api-key ot_live_...
   npx preman-sdk register --file endpoints.json --upstream https://api.example.com --intent "Auth endpoints"
   npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.example.com
+  npx preman-sdk import-docs --url https://docs.example.com/api --name "Public API MCP"
+  npx preman-sdk import-remote-mcp --url https://remote-mcp.example.com/mcp --name "Remote MCP Proxy"
+  npx preman-sdk hosted-mcps
+  npx preman-sdk hosted-mcps --id mcp_123
   npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
   npx preman-sdk token list --mcp-id mcp_123
   npx preman-sdk token revoke --mcp-id mcp_123 --token-id token_123
@@ -334,6 +423,13 @@ Options:
   --session-id              Reuse a Flow playground session id
   --upstream-secret         Upstream API secret stored with a hosted MCP deploy
   --upstream-secret-env     Read upstream API secret from an environment variable
+  --upstream-secret-type    bearer, api_key, basic, or custom
+  --auth-type               How to attach the upstream secret: header, query, or basic
+  --auth-name               Header/query name for upstream auth (default: Authorization)
+  --auth-prefix             Prefix for the secret (default server behavior: Bearer )
+  --access-mode             public or token
+  --max-endpoints           Max docs endpoints to import (default server behavior: 80)
+  --preview                 For import-docs, discover and return generated spec without deploying
   --consumer-label          Initial consumer token label (default: default-consumer)
   --idempotency-key         Idempotency key for write operations
   --version                 Print CLI version

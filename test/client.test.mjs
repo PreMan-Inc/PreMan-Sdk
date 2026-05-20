@@ -77,6 +77,113 @@ test("deployMcp uses the hosted MCP deploy route and normalizes response", async
   assert.equal(result.dashboardUrl, "https://www.flowtest.opentest.live/hosted-mcps/mcp_123");
 });
 
+test("importFromDocs creates a hosted MCP from a docs URL", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "ot_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        hosted_mcp: { id: "mcp_docs", name: "Docs MCP" },
+        hosted_mcp_url: "https://flow.opentest.live/h/mcp_docs/mcp",
+        install_snippet: {
+          url: "https://flow.opentest.live/h/mcp_docs/mcp",
+          mcp_json: { mcpServers: {} },
+        },
+        preview: { source_type: "openapi", tool_count: 12 },
+        generated_spec: { tools: [{ name: "get_users" }] },
+        notice: "Created from OpenAPI/Swagger discovered from the docs URL.",
+      });
+    },
+  });
+
+  const result = await client.importFromDocs({
+    docsUrl: "https://docs.example.com/api",
+    name: "Docs MCP",
+    upstreamBaseUrl: "https://api.example.com",
+    maxEndpoints: 120,
+    accessMode: "token",
+    deploy: true,
+  });
+
+  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/import-from-docs");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    docs_url: "https://docs.example.com/api",
+    name: "Docs MCP",
+    upstream_base_url: "https://api.example.com",
+    access_mode: "token",
+    max_endpoints: 120,
+    deploy: true,
+  });
+  assert.equal(result.mcpId, "mcp_docs");
+  assert.equal(result.hostedUrl, "https://flow.opentest.live/h/mcp_docs/mcp");
+  assert.equal(result.dashboardUrl, "https://www.flowtest.opentest.live/hosted-mcps/mcp_docs");
+  assert.equal(result.preview.tool_count, 12);
+  assert.equal(result.generatedSpec.tools[0].name, "get_users");
+});
+
+test("importRemoteMcp creates a gateway proxy for an existing MCP server", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "ot_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        hosted_mcp: { id: "mcp_remote", name: "Remote MCP Proxy" },
+        hosted_mcp_url: "https://flow.opentest.live/h/mcp_remote/mcp",
+        install_snippet: {
+          url: "https://flow.opentest.live/h/mcp_remote/mcp",
+          mcp_json: { mcpServers: {} },
+        },
+        preview: { source_type: "remote_mcp", tool_count: 3 },
+        generated_spec: { proxy_type: "remote_mcp" },
+      });
+    },
+  });
+
+  const result = await client.importRemoteMcp({
+    mcpUrl: "https://remote.example.com/mcp",
+    name: "Remote MCP Proxy",
+    upstreamAuthStyle: { type: "header", name: "Authorization", prefix: "Bearer " },
+    initialUpstreamSecret: "remote-secret",
+    initialUpstreamSecretType: "bearer",
+  });
+
+  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/import-remote-mcp");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    mcp_url: "https://remote.example.com/mcp",
+    name: "Remote MCP Proxy",
+    upstream_auth_style: { type: "header", name: "Authorization", prefix: "Bearer " },
+    initial_upstream_secret: "remote-secret",
+    initial_upstream_secret_type: "bearer",
+  });
+  assert.equal(result.mcpId, "mcp_remote");
+  assert.equal(result.generatedSpec.proxy_type, "remote_mcp");
+});
+
+test("listHostedMcps and getHostedMcp read hosted MCP inventory", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "ot_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/hosted-mcps/mcp_123")) {
+        return jsonResponse({ hosted_mcp: { id: "mcp_123", name: "Auth MCP" } });
+      }
+      return jsonResponse({ hosted_mcps: [{ id: "mcp_123", name: "Auth MCP" }], total: 1 });
+    },
+  });
+
+  const listed = await client.listHostedMcps();
+  const detail = await client.getHostedMcp("mcp_123");
+
+  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps");
+  assert.equal(calls[1].url, "https://flow.opentest.live/hosted-mcps/mcp_123");
+  assert.equal(listed.total, 1);
+  assert.equal(listed.hostedMcps[0].name, "Auth MCP");
+  assert.equal(detail.hostedMcp.id, "mcp_123");
+});
+
 test("createToken maps SDK token options to hosted MCP consumer tokens", async () => {
   const calls = [];
   const client = new PremanClient({

@@ -69,6 +69,74 @@ export type DeployMcpResponse = {
   installSnippet?: HostedMcpInstallSnippet | null;
 };
 
+export type HostedMcpAccessMode = "public" | "token";
+
+export type UpstreamSecretType = "bearer" | "api_key" | "basic" | "custom";
+
+export type UpstreamAuthStyle = {
+  type?: "header" | "query" | "basic";
+  name?: string;
+  prefix?: string;
+};
+
+export type HostedMcpRecord = Record<string, unknown> & {
+  id?: string;
+  name?: string;
+  upstream_base_url?: string;
+  access_mode?: HostedMcpAccessMode;
+  status?: string;
+};
+
+export type ListHostedMcpsResponse = {
+  hostedMcps: HostedMcpRecord[];
+  total: number;
+  raw: Record<string, unknown>;
+};
+
+export type GetHostedMcpResponse = {
+  hostedMcp: HostedMcpRecord;
+  raw: Record<string, unknown>;
+};
+
+export type ImportFromDocsRequest = {
+  docsUrl: string;
+  name?: string;
+  slug?: string;
+  upstreamBaseUrl?: string;
+  upstreamAuthStyle?: UpstreamAuthStyle;
+  initialUpstreamSecret?: string;
+  initialUpstreamSecretType?: UpstreamSecretType;
+  accessMode?: HostedMcpAccessMode;
+  maxEndpoints?: number;
+  deploy?: boolean;
+  request?: RequestOptions;
+};
+
+export type ImportRemoteMcpRequest = {
+  mcpUrl: string;
+  name?: string;
+  slug?: string;
+  upstreamAuthStyle?: UpstreamAuthStyle;
+  initialUpstreamSecret?: string;
+  initialUpstreamSecretType?: UpstreamSecretType;
+  accessMode?: HostedMcpAccessMode;
+  request?: RequestOptions;
+};
+
+export type HostedMcpImportResponse = {
+  mcpId?: string;
+  name?: string;
+  hostedUrl?: string | null;
+  dashboardUrl?: string;
+  hostedMcp?: HostedMcpRecord | null;
+  initialCredential?: Record<string, unknown> | null;
+  installSnippet?: HostedMcpInstallSnippet | null;
+  preview?: Record<string, unknown>;
+  generatedSpec?: Record<string, unknown>;
+  notice?: string;
+  raw: Record<string, unknown>;
+};
+
 export type CreateTokenRequest = {
   mcpId: string;
   agentId?: string;
