@@ -85,6 +85,28 @@ export type HostedMcpRecord = Record<string, unknown> & {
   upstream_base_url?: string;
   access_mode?: HostedMcpAccessMode;
   status?: string;
+  endpoint_selection?: unknown;
+};
+
+export type HostedMcpTool = {
+  name: string;
+  description?: string;
+  inputSchema?: JsonSchema;
+  input_schema?: JsonSchema;
+  _endpoint_ref?: Record<string, unknown>;
+};
+
+export type HostedMcpCatalog = {
+  mcpId?: string;
+  name?: string;
+  upstreamBaseUrl?: string;
+  tools: HostedMcpTool[];
+  raw?: Record<string, unknown>;
+};
+
+export type GetHostedMcpCatalogResponse = {
+  catalog: HostedMcpCatalog;
+  raw: Record<string, unknown>;
 };
 
 export type ListHostedMcpsResponse = {

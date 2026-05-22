@@ -11,7 +11,14 @@ export { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 export { hostedMcpJson, installCommand, writeMcpInstall } from "./installers.js";
 export { parseManifest, previewManifest, readManifest } from "./manifest.js";
 export { resolveSecret, secretFromEnv } from "./secrets.js";
-export { generateEndpointTypes } from "./typegen.js";
+export {
+  createCatalogSnapshot,
+  diffCatalogSnapshots,
+  formatCatalogDiff,
+  normalizeHostedMcpCatalog,
+  parseCatalogSnapshot,
+} from "./catalog.js";
+export { generateEndpointTypes, generateHostedMcpToolTypes, schemaToType } from "./typegen.js";
 export type {
   AuditEvent,
   AuditLogResponse,
@@ -24,8 +31,11 @@ export type {
   HostedMcpInstallSnippet,
   GetHostedMcpResponse,
   HostedMcpAccessMode,
+  HostedMcpCatalog,
   HostedMcpImportResponse,
   HostedMcpRecord,
+  HostedMcpTool,
+  GetHostedMcpCatalogResponse,
   HttpMethod,
   ImportFromDocsRequest,
   ImportRemoteMcpRequest,
@@ -54,3 +64,10 @@ export type {
 export type { McpInstallTarget, HostedMcpConfig, WriteInstallOptions } from "./installers.js";
 export type { ManifestPlan, PremanManifest, PremanPolicyRule } from "./manifest.js";
 export type { SecretProvider } from "./secrets.js";
+export type {
+  CatalogDiff,
+  CatalogDiffFinding,
+  CatalogDiffOptions,
+  CatalogSnapshot,
+  CatalogToolSnapshot,
+} from "./catalog.js";

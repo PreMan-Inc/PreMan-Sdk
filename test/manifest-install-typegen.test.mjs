@@ -5,8 +5,12 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   generateEndpointTypes,
+  generateHostedMcpToolTypes,
   hostedMcpJson,
   installCommand,
+  createCatalogSnapshot,
+  diffCatalogSnapshots,
+  normalizeHostedMcpCatalog,
   previewManifest,
   resolveSecret,
   secretFromEnv,
@@ -66,6 +70,111 @@ test("typegen emits endpoint request and response types", () => {
   assert.match(output, /export namespace PremanEndpoints/);
   assert.match(output, /export type PostAuthLoginRequest/);
   assert.match(output, /"access_token": string/);
+});
+
+test("typegen emits hosted MCP tool catalog wrappers", () => {
+  const catalog = normalizeHostedMcpCatalog({
+    hosted_mcp: {
+      id: "mcp_123",
+      name: "Auth MCP",
+      endpoint_selection: {
+        tools: [
+          {
+            name: "post_auth_login",
+            description: "Login with email and password.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                body: {
+                  type: "object",
+                  properties: {
+                    email: { type: "string", format: "email" },
+                    password: { type: "string" },
+                    mode: { enum: ["password", "sso"] },
+                  },
+                  required: ["email", "password"],
+                  additionalProperties: false,
+                },
+              },
+              required: ["body"],
+              additionalProperties: false,
+            },
+            _endpoint_ref: { method: "POST", path_template: "/auth/login" },
+          },
+        ],
+      },
+    },
+  });
+
+  const output = generateHostedMcpToolTypes(catalog, { client: true });
+
+  assert.match(output, /export namespace PremanTools/);
+  assert.match(output, /export type PostAuthLoginArgs/);
+  assert.match(output, /"mode"\?: "password" \| "sso"/);
+  assert.match(output, /postAuthLogin: \(args: PostAuthLoginArgs\)/);
+});
+
+test("catalog diff blocks removed tools, schema broadening, and new write tools", () => {
+  const approved = createCatalogSnapshot(normalizeHostedMcpCatalog({
+    endpoint_selection: {
+      tools: [
+        {
+          name: "get_users",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "object",
+                properties: { limit: { type: "integer" } },
+                required: ["limit"],
+                additionalProperties: false,
+              },
+            },
+            additionalProperties: false,
+          },
+          _endpoint_ref: { method: "GET", path_template: "/users" },
+        },
+        {
+          name: "delete_user",
+          inputSchema: { type: "object", additionalProperties: false },
+          _endpoint_ref: { method: "DELETE", path_template: "/users/{id}" },
+        },
+      ],
+    },
+  }), new Date("2026-01-01T00:00:00Z"));
+  const current = createCatalogSnapshot(normalizeHostedMcpCatalog({
+    endpoint_selection: {
+      tools: [
+        {
+          name: "get_users",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "object",
+                properties: { limit: { type: "integer" } },
+                additionalProperties: true,
+              },
+            },
+            additionalProperties: false,
+          },
+          _endpoint_ref: { method: "GET", path_template: "/users" },
+        },
+        {
+          name: "post_users",
+          inputSchema: { type: "object", additionalProperties: false },
+          _endpoint_ref: { method: "POST", path_template: "/users" },
+        },
+      ],
+    },
+  }), new Date("2026-01-01T00:00:00Z"));
+
+  const diff = diffCatalogSnapshots(approved, current);
+  assert.deepEqual(diff.blocking.map((finding) => finding.code).sort(), [
+    "new_write_tool",
+    "removed_tool",
+    "schema_broadened",
+  ]);
 });
 
 test("secret providers read environment values", async () => {

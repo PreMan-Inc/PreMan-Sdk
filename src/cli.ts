@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "fs/promises";
+import {
+  createCatalogSnapshot,
+  diffCatalogSnapshots,
+  formatCatalogDiff,
+  normalizeHostedMcpCatalog,
+  parseCatalogSnapshot,
+} from "./catalog.js";
 import { PremanClient } from "./client.js";
 import { readConfig, writeConfig } from "./config.js";
 import { fromOpenApi, fromPostmanCollection } from "./importers.js";
 import { installCommand, writeMcpInstall, type McpInstallTarget } from "./installers.js";
 import { previewManifest, readManifest } from "./manifest.js";
 import { resolveSecret, secretFromEnv } from "./secrets.js";
-import { generateEndpointTypes } from "./typegen.js";
+import { generateEndpointTypes, generateHostedMcpToolTypes } from "./typegen.js";
 import { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 import type { EndpointDefinition } from "./types.js";
 
@@ -23,6 +30,8 @@ type Command =
   | "import"
   | "apply"
   | "install-snippet"
+  | "snapshot"
+  | "diff"
   | "typegen"
   | "help";
 const VERSION = "0.3.0";
@@ -168,9 +177,24 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "snapshot") {
+    await handleSnapshotCommand(args, client);
+    return;
+  }
+
+  if (command === "diff") {
+    await handleDiffCommand(args, client);
+    return;
+  }
+
   if (command === "typegen") {
-    const endpoints = await endpointsFromRequiredFile(args, "typegen");
-    const text = generateEndpointTypes(endpoints, { namespace: valueFor(args, "--namespace") });
+    const mcpId = valueFor(args, "--mcp-id");
+    const text = mcpId
+      ? generateHostedMcpToolTypes((await client.getHostedMcpCatalog(mcpId)).catalog, {
+        namespace: valueFor(args, "--namespace"),
+        client: hasFlag(args, "--client"),
+      })
+      : generateEndpointTypes(await endpointsFromRequiredFile(args, "typegen"), { namespace: valueFor(args, "--namespace") });
     const out = valueFor(args, "--out");
     if (out) {
       await writeFile(out, text);
@@ -182,6 +206,68 @@ async function main(): Promise<void> {
   }
 
   throw new Error(`Unknown command: ${command}`);
+}
+
+async function handleSnapshotCommand(args: string[], client: PremanClient): Promise<void> {
+  const current = await currentCatalogSnapshot(args, client);
+  const text = `${JSON.stringify(current, null, 2)}\n`;
+  const out = valueFor(args, "--out");
+  if (out) {
+    await writeFile(out, text);
+    console.log(`Wrote ${out}`);
+    return;
+  }
+  console.log(text);
+}
+
+async function handleDiffCommand(args: string[], client: PremanClient): Promise<void> {
+  const approvedFile = requiredValue(args, "--approved", "diff requires --approved preman-catalog.snapshot.json");
+  const approved = parseCatalogSnapshot(await readFile(approvedFile, "utf8"));
+  const current = await currentCatalogSnapshot(args, client);
+  const diff = diffCatalogSnapshots(approved, current, {
+    allowRemovedTools: hasFlag(args, "--allow-removed-tools"),
+    allowRenamedTools: hasFlag(args, "--allow-renamed-tools"),
+    allowRiskySchemaBroadening: hasFlag(args, "--allow-schema-broadening"),
+    allowNewWriteTools: hasFlag(args, "--allow-new-write-tools"),
+  });
+  if (hasFlag(args, "--json")) {
+    console.log(JSON.stringify(diff, null, 2));
+  } else {
+    console.log(formatCatalogDiff(diff));
+  }
+  if (diff.blocking.length) {
+    process.exitCode = 1;
+  }
+}
+
+async function currentCatalogSnapshot(args: string[], client: PremanClient) {
+  const mcpId = valueFor(args, "--mcp-id");
+  if (mcpId) {
+    return createCatalogSnapshot((await client.getHostedMcpCatalog(mcpId)).catalog);
+  }
+
+  const docsUrl = valueFor(args, "--url") ?? valueFor(args, "--docs-url");
+  if (docsUrl) {
+    const preview = await client.importFromDocs(omitUndefined({
+      docsUrl,
+      name: valueFor(args, "--name"),
+      upstreamBaseUrl: valueFor(args, "--upstream"),
+      maxEndpoints: numberFor(args, "--max-endpoints"),
+      deploy: false,
+    }));
+    const catalog = normalizeHostedMcpCatalog({
+      name: preview.name,
+      generated_spec: preview.generatedSpec,
+    });
+    return createCatalogSnapshot(catalog);
+  }
+
+  const file = valueFor(args, "--file");
+  if (file) {
+    return parseCatalogSnapshot(await readFile(file, "utf8"));
+  }
+
+  throw new Error("Provide --mcp-id, --url, or --file.");
 }
 
 async function handleTokenCommand(args: string[], client: PremanClient): Promise<void> {
@@ -407,7 +493,10 @@ Usage:
   npx preman-sdk import openapi --file openapi.json --out endpoints.json
   npx preman-sdk import postman --file collection.json --deploy --upstream https://api.example.com
   npx preman-sdk apply --file preman.config.json --dry-run
+  npx preman-sdk snapshot --mcp-id mcp_123 --out preman-catalog.snapshot.json
+  npx preman-sdk diff --approved preman-catalog.snapshot.json --mcp-id mcp_123
   npx preman-sdk typegen --file endpoints.json --out preman-endpoints.ts
+  npx preman-sdk typegen --mcp-id mcp_123 --client --out preman-tools.ts
   npx preman-sdk install-snippet --target cursor --server-name auth-mcp --url https://flow.opentest.live/h/.../mcp --token-env PREMAN_CONSUMER_TOKEN --write
   npx preman-sdk status
 
@@ -430,6 +519,12 @@ Options:
   --access-mode             public or token
   --max-endpoints           Max docs endpoints to import (default server behavior: 80)
   --preview                 For import-docs, discover and return generated spec without deploying
+  --approved                Approved catalog snapshot for diff
+  --allow-removed-tools     Do not fail diff on removed tools
+  --allow-renamed-tools     Do not fail diff on likely renamed tools
+  --allow-schema-broadening Do not fail diff on broader input schemas
+  --allow-new-write-tools   Do not fail diff on new POST/PUT/PATCH/DELETE tools
+  --client                  For typegen --mcp-id, emit a thin callTool wrapper
   --consumer-label          Initial consumer token label (default: default-consumer)
   --idempotency-key         Idempotency key for write operations
   --version                 Print CLI version

@@ -282,6 +282,64 @@ Create TypeScript request/response types from your endpoint manifest:
 preman typegen --file endpoints.json --out preman-endpoints.ts
 ```
 
+Create typed wrappers from the actual hosted MCP catalog agents will call:
+
+```bash
+preman typegen --mcp-id mcp_123 --client --out preman-tools.ts
+```
+
+The hosted catalog typegen reads the stored `tools/list` schema, including nested
+objects, arrays, enums, nullable fields, `anyOf` / `oneOf`, and
+`additionalProperties`. Use `--client` when you want a thin typed wrapper around
+your own `callTool(name, args)` implementation for tests or internal automations.
+
+## Catalog Snapshots And CI Drift Checks
+
+Pin the approved hosted MCP catalog to disk:
+
+```bash
+preman snapshot --mcp-id mcp_123 --out preman-catalog.snapshot.json
+```
+
+Then fail CI if production drifts from the approved catalog:
+
+```bash
+preman diff --approved preman-catalog.snapshot.json --mcp-id mcp_123
+```
+
+`diff` exits non-zero for removed tools, likely renames, broader input schemas,
+or new write-capable tools (`POST`, `PUT`, `PATCH`, `DELETE`) unless you pass the
+matching approval flag:
+
+```bash
+preman diff \
+  --approved preman-catalog.snapshot.json \
+  --mcp-id mcp_123 \
+  --allow-new-write-tools
+```
+
+GitHub Actions example:
+
+```yaml
+name: MCP catalog drift
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g preman-sdk
+      - run: preman diff --approved preman-catalog.snapshot.json --mcp-id ${{ vars.PREMAN_MCP_ID }}
+        env:
+          PREMAN_API_KEY: ${{ secrets.PREMAN_API_KEY }}
+```
+
 ## Install Snippets
 
 After minting a hosted MCP consumer token, generate or write client config:
@@ -382,7 +440,10 @@ npx preman-sdk token list --mcp-id mcp_123
 npx preman-sdk token revoke --mcp-id mcp_123 --token-id token_123
 npx preman-sdk import openapi --file openapi.json --out endpoints.json
 npx preman-sdk apply --file preman.config.json --dry-run
+npx preman-sdk snapshot --mcp-id mcp_123 --out preman-catalog.snapshot.json
+npx preman-sdk diff --approved preman-catalog.snapshot.json --mcp-id mcp_123
 npx preman-sdk typegen --file endpoints.json --out preman-endpoints.ts
+npx preman-sdk typegen --mcp-id mcp_123 --client --out preman-tools.ts
 ```
 
 ### What `--upstream` Means
@@ -431,6 +492,8 @@ Working today:
 - `fromOpenApi()` / `fromPostmanCollection()` -> converts API docs into endpoint definitions
 - `previewManifest()` / `readManifest()` -> validate policy-as-code manifests and dry runs
 - `generateEndpointTypes()` -> generate TypeScript types from endpoint schemas
+- `generateHostedMcpToolTypes()` -> generate TypeScript types from hosted MCP tool catalogs
+- `createCatalogSnapshot()` / `diffCatalogSnapshots()` -> pin approved tool catalogs and detect CI drift
 - `hostedMcpJson()` / `writeMcpInstall()` -> generate or write MCP install snippets
 - `resolveSecret()` / `secretFromEnv()` -> keep secrets out of command text and config
 - framework examples for Express, Fastify, Next.js, and Hono in `examples/frameworks`

@@ -9,6 +9,7 @@ import {
   type GetHostedMcpResponse,
   type HostedMcpImportResponse,
   type HostedMcpRecord,
+  type GetHostedMcpCatalogResponse,
   type ImportFromDocsRequest,
   type ImportRemoteMcpRequest,
   type ListHostedMcpsResponse,
@@ -28,6 +29,7 @@ import {
   type VerifyTokenResponse,
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
+import { normalizeHostedMcpCatalog } from "./catalog.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_API_URL = "https://flow.opentest.live";
@@ -187,6 +189,14 @@ export class PremanClient {
     return {
       hostedMcp: objectAt(response, "hosted_mcp") as HostedMcpRecord,
       raw: response,
+    };
+  }
+
+  async getHostedMcpCatalog(mcpId: string): Promise<GetHostedMcpCatalogResponse> {
+    const detail = await this.getHostedMcp(mcpId);
+    return {
+      catalog: normalizeHostedMcpCatalog(detail.raw),
+      raw: detail.raw,
     };
   }
 
