@@ -1,13 +1,13 @@
 # PreMan SDK
 
-[![GitHub stars](https://img.shields.io/github/stars/Watcher1223/PreMan-Sdk?style=social)](https://github.com/Watcher1223/PreMan-Sdk)
+[![GitHub stars](https://img.shields.io/github/stars/PreMan-Inc/PreMan-Sdk?style=social)](https://github.com/PreMan-Inc/PreMan-Sdk)
 [![Website](https://img.shields.io/badge/PreMan-preman.live-black)](https://preman.live)
-[![Workspace](https://img.shields.io/badge/OpenTest-workspace-10b981)](https://www.flowtest.opentest.live)
+[![Workspace](https://img.shields.io/badge/PreMan-workspace-10b981)](https://app.preman.live)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 PreMan turns REST API endpoints into hosted MCP servers that AI agents can call with scoped consumer tokens.
 
-Use this SDK when you want to register endpoints from code or CI, import API docs or existing remote MCP servers, deploy them behind a PreMan gateway URL, and mint scoped tokens for agents, customers, or temporary sessions. The hosted workspace at [flowtest.opentest.live](https://www.flowtest.opentest.live) is where your team sees hosted MCPs, customer tokens, audit logs, and the company knowledge graph generated from agent activity.
+Use this SDK when you want to register endpoints from code or CI, import API docs or existing remote MCP servers, deploy them behind a PreMan gateway URL, and mint scoped tokens for agents, customers, or temporary sessions. The hosted workspace at [app.preman.live](https://app.preman.live) is where your team sees hosted MCPs, customer tokens, audit logs, and the company knowledge graph generated from agent activity.
 
 ```text
 Your API / CI job
@@ -26,16 +26,15 @@ npm install preman-sdk
 Or run the CLI directly:
 
 ```bash
-npx preman-sdk init --api-key ot_live_your_key
+npx preman-sdk init --api-key pm_live_your_key
 ```
 
-The CLI uses your OpenTest workspace API key. Create or copy one from [OpenTest Settings](https://www.flowtest.opentest.live/settings). The key currently starts with `ot_live_`.
+The CLI uses your PreMan workspace API key. Create or copy one from [PreMan Settings](https://app.preman.live/settings). The key currently starts with `pm_live_`.
 
 You can also skip `init` and set an environment variable:
 
 ```bash
-export PREMAN_API_KEY=ot_live_your_key
-# OPENTEST_API_KEY also works for compatibility with the OpenTest MCP.
+export PREMAN_API_KEY=pm_live_your_key
 ```
 
 ## Quick Start
@@ -61,7 +60,7 @@ Create `endpoints.json`:
 ]
 ```
 
-Register the endpoints into a Flow playground session:
+Register the endpoints into a PreMan playground session:
 
 ```bash
 npx preman-sdk register --file endpoints.json --upstream https://api.company.com
@@ -104,7 +103,7 @@ npx preman-sdk token \
   --rate-limit-rpm 60
 ```
 
-Then open [flowtest.opentest.live](https://www.flowtest.opentest.live) to inspect the hosted MCP, copy the install snippet, revoke tokens, and review audit logs.
+Then open [app.preman.live](https://app.preman.live) to inspect the hosted MCP, copy the install snippet, revoke tokens, and review audit logs.
 
 ## MCP Gateway Imports
 
@@ -154,8 +153,8 @@ import { PremanClient } from "preman-sdk";
 
 const preman = new PremanClient({
   apiKey: process.env.PREMAN_API_KEY,
-  apiUrl: "https://flow.opentest.live",
-  appUrl: "https://www.flowtest.opentest.live",
+  apiUrl: "https://api.preman.live",
+  appUrl: "https://app.preman.live",
 });
 
 const endpoints = [
@@ -348,13 +347,13 @@ After minting a hosted MCP consumer token, generate or write client config:
 preman install-snippet \
   --target cursor \
   --server-name auth-mcp \
-  --url https://flow.opentest.live/h/mcp_123/mcp \
+  --url https://api.preman.live/h/mcp_123/mcp \
   --token-env PREMAN_CONSUMER_TOKEN
 
 preman install-snippet \
   --target cursor \
   --server-name auth-mcp \
-  --url https://flow.opentest.live/h/mcp_123/mcp \
+  --url https://api.preman.live/h/mcp_123/mcp \
   --token-env PREMAN_CONSUMER_TOKEN \
   --write
 ```
@@ -421,7 +420,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Watcher1223/PreMan-Sdk@main
+      - uses: PreMan-Inc/PreMan-Sdk@main
         with:
           api-key: ${{ secrets.PREMAN_API_KEY }}
           endpoint-file: endpoints.json
@@ -431,7 +430,7 @@ jobs:
 ## CLI Reference
 
 ```bash
-npx preman-sdk init --api-key ot_live_...
+npx preman-sdk init --api-key pm_live_...
 npx preman-sdk status
 npx preman-sdk register --file endpoints.json --upstream https://api.company.com
 npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.company.com
@@ -474,16 +473,16 @@ The CLI stores local config at:
 Environment variables override local config:
 
 ```bash
-PREMAN_API_KEY=ot_live_your_key
-PREMAN_API_URL=https://flow.opentest.live
-PREMAN_APP_URL=https://www.flowtest.opentest.live
+PREMAN_API_KEY=pm_live_your_key
+PREMAN_API_URL=https://api.preman.live
+PREMAN_APP_URL=https://app.preman.live
 ```
 
 ## Current API Surface
 
 Working today:
 
-- `registerEndpoints()` -> creates or updates a Flow playground session
+- `registerEndpoints()` -> creates or updates a PreMan playground session
 - `deployMcp()` -> creates a hosted MCP from endpoint definitions
 - `createToken()` -> mints a scoped hosted MCP consumer token
 - `listTokens()` / `revokeToken()` / `rotateToken()` -> manage hosted MCP token lifecycle

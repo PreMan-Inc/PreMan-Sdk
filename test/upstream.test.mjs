@@ -11,7 +11,7 @@ test("isLocalUpstreamUrl detects local and private upstreams", () => {
   assert.equal(isLocalUpstreamUrl("http://172.31.0.5"), true);
   assert.equal(isLocalUpstreamUrl("http://192.168.1.20"), true);
   assert.equal(isLocalUpstreamUrl("https://api.company.com"), false);
-  assert.equal(isLocalUpstreamUrl("https://flow.opentest.live"), false);
+  assert.equal(isLocalUpstreamUrl("https://api.preman.live"), false);
 });
 
 test("localUpstreamMessage points users to tunnels", () => {

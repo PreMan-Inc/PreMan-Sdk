@@ -10,8 +10,8 @@ export type PremanConfig = {
 };
 
 const DEFAULT_CONFIG: PremanConfig = {
-  apiUrl: "https://flow.opentest.live",
-  appUrl: "https://www.flowtest.opentest.live",
+  apiUrl: "https://api.preman.live",
+  appUrl: "https://app.preman.live",
 };
 
 export function defaultConfigPath(): string {

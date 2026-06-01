@@ -3,7 +3,7 @@ import test from "node:test";
 import { PremanClient } from "../dist/index.js";
 
 const enabled = process.env.PREMAN_INTEGRATION === "1";
-const apiKey = process.env.PREMAN_API_KEY ?? process.env.OPENTEST_API_KEY;
+const apiKey = process.env.PREMAN_API_KEY;
 const apiUrl = process.env.PREMAN_API_URL;
 const docsUrl = process.env.PREMAN_TEST_OPENAPI_URL ?? "https://petstore3.swagger.io/api/v3/openapi.json";
 const remoteMcpUrl = process.env.PREMAN_TEST_REMOTE_MCP_URL;

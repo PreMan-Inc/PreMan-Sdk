@@ -38,13 +38,13 @@ test("install snippet writers merge Cursor-style MCP config", async () => {
     target: "cursor",
     path,
     serverName: "auth-mcp",
-    url: "https://flow.opentest.live/h/mcp_123/mcp",
-    token: "ot_hmcp_test",
+    url: "https://api.preman.live/h/mcp_123/mcp",
+    token: "pm_hmcp_test",
   });
 
   const written = JSON.parse(await readFile(path, "utf8"));
   assert.equal(result.wrote, true);
-  assert.equal(written.mcpServers["auth-mcp"].headers.Authorization, "Bearer ot_hmcp_test");
+  assert.equal(written.mcpServers["auth-mcp"].headers.Authorization, "Bearer pm_hmcp_test");
   assert.equal(hostedMcpJson({ serverName: "auth-mcp", url: "u", token: "t" }).mcpServers["auth-mcp"].url, "u");
   assert.match(installCommand({ serverName: "auth-mcp", url: "u", token: "t" }, "claude"), /claude mcp add/);
 });

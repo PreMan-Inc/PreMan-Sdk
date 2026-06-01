@@ -7,10 +7,10 @@
   "homepage": "https://preman.live",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Watcher1223/PreMan-Sdk.git"
+    "url": "git+https://github.com/PreMan-Inc/PreMan-Sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/Watcher1223/PreMan-Sdk/issues"
+    "url": "https://github.com/PreMan-Inc/PreMan-Sdk/issues"
   },
   "exports": {
     ".": {
@@ -68,7 +68,6 @@
     "auth",
     "audit",
     "tokens",
-    "opentest",
     "preman"
   ],
   "engines": {

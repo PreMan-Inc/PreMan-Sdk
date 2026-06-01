@@ -10,12 +10,12 @@ function jsonResponse(body, init = {}) {
   });
 }
 
-test("registerEndpoints writes to a Flow agent session", async () => {
+test("registerEndpoints writes to a PreMan agent session", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
-    apiUrl: "https://flow.opentest.live",
-    appUrl: "https://www.flowtest.opentest.live",
+    apiKey: "pm_live_12345678901234567890123456789012",
+    apiUrl: "https://api.preman.live",
+    appUrl: "https://app.preman.live",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({ id: "session_123", endpoint_count: 1 });
@@ -38,25 +38,25 @@ test("registerEndpoints writes to a Flow agent session", async () => {
     ],
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/agent-sessions/session_123/endpoints");
+  assert.equal(calls[0].url, "https://api.preman.live/agent-sessions/session_123/endpoints");
   assert.equal(JSON.parse(calls[0].init.body).endpoints[0].path_template, "/auth/login");
-  assert.equal(result.dashboardUrl, "https://www.flowtest.opentest.live/try?session=session_123");
+  assert.equal(result.dashboardUrl, "https://app.preman.live/try?session=session_123");
 });
 
 test("deployMcp uses the hosted MCP deploy route and normalizes response", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({
         hosted_mcp: { id: "mcp_123", name: "Auth MCP" },
-        hosted_mcp_url: "https://flow.opentest.live/h/mcp_123/mcp",
+        hosted_mcp_url: "https://api.preman.live/h/mcp_123/mcp",
         tool_count: 1,
-        raw_consumer_token: "ot_hmcp_test",
+        raw_consumer_token: "pm_hmcp_test",
         consumer_token: { id: "token_123" },
         install_snippet: {
-          url: "https://flow.opentest.live/h/mcp_123/mcp",
+          url: "https://api.preman.live/h/mcp_123/mcp",
           mcp_json: { mcpServers: {} },
         },
       });
@@ -70,24 +70,24 @@ test("deployMcp uses the hosted MCP deploy route and normalizes response", async
     endpoints: [{ method: "POST", path: "/auth/login" }],
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/agent-sessions/session_123/mcp/deploy");
+  assert.equal(calls[0].url, "https://api.preman.live/agent-sessions/session_123/mcp/deploy");
   assert.equal(JSON.parse(calls[0].init.body).initial_consumer_label, "default-consumer");
   assert.equal(result.mcpId, "mcp_123");
-  assert.equal(result.hostedUrl, "https://flow.opentest.live/h/mcp_123/mcp");
-  assert.equal(result.dashboardUrl, "https://www.flowtest.opentest.live/hosted-mcps/mcp_123");
+  assert.equal(result.hostedUrl, "https://api.preman.live/h/mcp_123/mcp");
+  assert.equal(result.dashboardUrl, "https://app.preman.live/hosted-mcps/mcp_123");
 });
 
 test("importFromDocs creates a hosted MCP from a docs URL", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({
         hosted_mcp: { id: "mcp_docs", name: "Docs MCP" },
-        hosted_mcp_url: "https://flow.opentest.live/h/mcp_docs/mcp",
+        hosted_mcp_url: "https://api.preman.live/h/mcp_docs/mcp",
         install_snippet: {
-          url: "https://flow.opentest.live/h/mcp_docs/mcp",
+          url: "https://api.preman.live/h/mcp_docs/mcp",
           mcp_json: { mcpServers: {} },
         },
         preview: { source_type: "openapi", tool_count: 12 },
@@ -106,7 +106,7 @@ test("importFromDocs creates a hosted MCP from a docs URL", async () => {
     deploy: true,
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/import-from-docs");
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/import-from-docs");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     docs_url: "https://docs.example.com/api",
     name: "Docs MCP",
@@ -116,8 +116,8 @@ test("importFromDocs creates a hosted MCP from a docs URL", async () => {
     deploy: true,
   });
   assert.equal(result.mcpId, "mcp_docs");
-  assert.equal(result.hostedUrl, "https://flow.opentest.live/h/mcp_docs/mcp");
-  assert.equal(result.dashboardUrl, "https://www.flowtest.opentest.live/hosted-mcps/mcp_docs");
+  assert.equal(result.hostedUrl, "https://api.preman.live/h/mcp_docs/mcp");
+  assert.equal(result.dashboardUrl, "https://app.preman.live/hosted-mcps/mcp_docs");
   assert.equal(result.preview.tool_count, 12);
   assert.equal(result.generatedSpec.tools[0].name, "get_users");
 });
@@ -125,14 +125,14 @@ test("importFromDocs creates a hosted MCP from a docs URL", async () => {
 test("importRemoteMcp creates a gateway proxy for an existing MCP server", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({
         hosted_mcp: { id: "mcp_remote", name: "Remote MCP Proxy" },
-        hosted_mcp_url: "https://flow.opentest.live/h/mcp_remote/mcp",
+        hosted_mcp_url: "https://api.preman.live/h/mcp_remote/mcp",
         install_snippet: {
-          url: "https://flow.opentest.live/h/mcp_remote/mcp",
+          url: "https://api.preman.live/h/mcp_remote/mcp",
           mcp_json: { mcpServers: {} },
         },
         preview: { source_type: "remote_mcp", tool_count: 3 },
@@ -149,7 +149,7 @@ test("importRemoteMcp creates a gateway proxy for an existing MCP server", async
     initialUpstreamSecretType: "bearer",
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/import-remote-mcp");
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/import-remote-mcp");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     mcp_url: "https://remote.example.com/mcp",
     name: "Remote MCP Proxy",
@@ -164,7 +164,7 @@ test("importRemoteMcp creates a gateway proxy for an existing MCP server", async
 test("listHostedMcps and getHostedMcp read hosted MCP inventory", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       if (String(url).endsWith("/hosted-mcps/mcp_123")) {
@@ -177,8 +177,8 @@ test("listHostedMcps and getHostedMcp read hosted MCP inventory", async () => {
   const listed = await client.listHostedMcps();
   const detail = await client.getHostedMcp("mcp_123");
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps");
-  assert.equal(calls[1].url, "https://flow.opentest.live/hosted-mcps/mcp_123");
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps");
+  assert.equal(calls[1].url, "https://api.preman.live/hosted-mcps/mcp_123");
   assert.equal(listed.total, 1);
   assert.equal(listed.hostedMcps[0].name, "Auth MCP");
   assert.equal(detail.hostedMcp.id, "mcp_123");
@@ -187,14 +187,14 @@ test("listHostedMcps and getHostedMcp read hosted MCP inventory", async () => {
 test("createToken maps SDK token options to hosted MCP consumer tokens", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({
-        raw_token: "ot_hmcp_test",
+        raw_token: "pm_hmcp_test",
         token: { id: "token_123", expires_at: null },
         install_snippet: {
-          url: "https://flow.opentest.live/h/mcp_123/mcp",
+          url: "https://api.preman.live/h/mcp_123/mcp",
           mcp_json: { mcpServers: {} },
         },
       });
@@ -208,20 +208,20 @@ test("createToken maps SDK token options to hosted MCP consumer tokens", async (
     rateLimitRpm: 60,
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/mcp_123/tokens");
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/mcp_123/tokens");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     consumer_label: "Acme",
     scopes: ["auth:login"],
     rate_limit_rpm: 60,
   });
-  assert.equal(result.token, "ot_hmcp_test");
+  assert.equal(result.token, "pm_hmcp_test");
   assert.equal(result.tokenId, "token_123");
 });
 
 test("verifyToken posts to the hosted MCP verification endpoint and normalizes identity", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({
@@ -239,13 +239,13 @@ test("verifyToken posts to the hosted MCP verification endpoint and normalizes i
 
   const result = await client.verifyToken({
     mcpId: "mcp_123",
-    token: "ot_hmcp_test",
+    token: "pm_hmcp_test",
     requiredScope: "auth:login",
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/mcp_123/tokens/verify");
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/mcp_123/tokens/verify");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
-    token: "ot_hmcp_test",
+    token: "pm_hmcp_test",
     required_scope: "auth:login",
   });
   assert.equal(result.valid, true);
@@ -261,18 +261,18 @@ test("verifyToken posts to the hosted MCP verification endpoint and normalizes i
 
 test("verifyToken rejects invalid verification responses with a helpful error", async () => {
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async () => jsonResponse({ scopes: ["auth:login"] }),
   });
 
   await assert.rejects(
-    () => client.verifyToken({ mcpId: "mcp_123", token: "ot_hmcp_test" }),
+    () => client.verifyToken({ mcpId: "mcp_123", token: "pm_hmcp_test" }),
     (error) => error instanceof PremanError && /expected boolean `valid` field/.test(error.message),
   );
 });
 
 test("verifyBearerToken requires mcpId and returns identity", async () => {
-  const headers = { authorization: "Bearer ot_hmcp_test" };
+  const headers = { authorization: "Bearer pm_hmcp_test" };
   const client = {
     verifyToken: async () => ({
       valid: true,
@@ -307,7 +307,7 @@ test("verifyBearerToken requires mcpId and returns identity", async () => {
 test("audit posts custom events and normalizes response", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({ id: "audit_123", created_at: "2026-05-10T12:00:00Z" });
@@ -323,9 +323,9 @@ test("audit posts custom events and normalizes response", async () => {
     metadata: { ip: "127.0.0.1" },
   });
 
-  assert.equal(calls[0].url, "https://flow.opentest.live/audit/events");
+  assert.equal(calls[0].url, "https://api.preman.live/audit/events");
   assert.equal(calls[0].init.method, "POST");
-  assert.equal(calls[0].init.headers.Authorization, "Bearer ot_live_12345678901234567890123456789012");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer pm_live_12345678901234567890123456789012");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     agent_id: "agent_123",
     customer_id: "cus_123",
@@ -340,19 +340,19 @@ test("audit posts custom events and normalizes response", async () => {
   });
 });
 
-test("client accepts OPENTEST_API_KEY as a compatibility fallback", async () => {
-  const previous = process.env.OPENTEST_API_KEY;
-  process.env.OPENTEST_API_KEY = "ot_live_12345678901234567890123456789012";
+test("client accepts PREMAN_API_KEY from the environment", async () => {
+  const previous = process.env.PREMAN_API_KEY;
+  process.env.PREMAN_API_KEY = "pm_live_12345678901234567890123456789012";
   try {
     const client = new PremanClient({
       fetchImpl: async () => jsonResponse({ id: "session_123", endpoint_count: 0 }),
     });
-    assert.equal(client.apiUrl, "https://flow.opentest.live");
+    assert.equal(client.apiUrl, "https://api.preman.live");
   } finally {
     if (previous === undefined) {
-      delete process.env.OPENTEST_API_KEY;
+      delete process.env.PREMAN_API_KEY;
     } else {
-      process.env.OPENTEST_API_KEY = previous;
+      process.env.PREMAN_API_KEY = previous;
     }
   }
 });
@@ -361,7 +361,7 @@ test("client retries idempotent POST requests and emits hooks", async () => {
   const events = [];
   let count = 0;
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     retry: { retries: 1, initialDelayMs: 1, maxDelayMs: 1 },
     hooks: {
       onRequest: (event) => events.push(["request", event.attempt, event.idempotencyKey]),
@@ -374,9 +374,9 @@ test("client retries idempotent POST requests and emits hooks", async () => {
         return new Response(JSON.stringify({ detail: "temporary" }), { status: 503 });
       }
       return jsonResponse({
-        raw_token: "ot_hmcp_test",
+        raw_token: "pm_hmcp_test",
         token: { id: "token_123" },
-        install_snippet: { url: "https://flow.opentest.live/h/mcp_123/mcp", mcp_json: {} },
+        install_snippet: { url: "https://api.preman.live/h/mcp_123/mcp", mcp_json: {} },
       });
     },
   });
@@ -396,7 +396,7 @@ test("client retries idempotent POST requests and emits hooks", async () => {
 test("token list revoke and rotate use hosted MCP token lifecycle endpoints", async () => {
   const calls = [];
   const client = new PremanClient({
-    apiKey: "ot_live_12345678901234567890123456789012",
+    apiKey: "pm_live_12345678901234567890123456789012",
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       if (String(url).endsWith("/tokens?include_revoked=true")) {
@@ -406,9 +406,9 @@ test("token list revoke and rotate use hosted MCP token lifecycle endpoints", as
         return jsonResponse({ revoked: true, token_id: "token_old" });
       }
       return jsonResponse({
-        raw_token: "ot_hmcp_new",
+        raw_token: "pm_hmcp_new",
         token: { id: "token_new" },
-        install_snippet: { url: "https://flow.opentest.live/h/mcp_123/mcp", mcp_json: {} },
+        install_snippet: { url: "https://api.preman.live/h/mcp_123/mcp", mcp_json: {} },
       });
     },
   });
@@ -424,6 +424,6 @@ test("token list revoke and rotate use hosted MCP token lifecycle endpoints", as
   assert.equal(listed.tokens[0].id, "token_old");
   assert.equal(rotated.newToken.tokenId, "token_new");
   assert.equal(rotated.revoked.tokenId, "token_old");
-  assert.equal(calls[0].url, "https://flow.opentest.live/hosted-mcps/mcp_123/tokens?include_revoked=true");
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/mcp_123/tokens?include_revoked=true");
   assert.equal(calls[2].init.method, "DELETE");
 });

@@ -32,8 +32,8 @@ import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedErro
 import { normalizeHostedMcpCatalog } from "./catalog.js";
 import { randomUUID } from "node:crypto";
 
-const DEFAULT_API_URL = "https://flow.opentest.live";
-const DEFAULT_APP_URL = "https://www.flowtest.opentest.live";
+const DEFAULT_API_URL = "https://api.preman.live";
+const DEFAULT_APP_URL = "https://app.preman.live";
 
 export class PremanClient {
   readonly apiUrl: string;
@@ -45,15 +45,15 @@ export class PremanClient {
   private readonly hooks: PremanClientOptions["hooks"];
 
   constructor(options: PremanClientOptions = {}) {
-    const apiKey = options.apiKey ?? process.env["PREMAN_API_KEY"] ?? process.env["OPENTEST_API_KEY"] ?? "";
+    const apiKey = options.apiKey ?? process.env["PREMAN_API_KEY"] ?? "";
     if (!apiKey.trim()) {
       throw new PremanConfigError(
-        "Missing API key. Create one at https://www.flowtest.opentest.live/settings, then run `preman init --api-key ot_live_...` or set PREMAN_API_KEY/OPENTEST_API_KEY.",
+        "Missing API key. Create one at https://app.preman.live/settings, then run `preman init --api-key pm_live_...` or set PREMAN_API_KEY.",
       );
     }
-    if (!apiKey.startsWith("ot_live_")) {
+    if (!apiKey.startsWith("pm_live_")) {
       throw new PremanConfigError(
-        "Invalid API key format. The SDK currently uses OpenTest workspace API keys that start with `ot_live_`. Create one at https://www.flowtest.opentest.live/settings. Do not use a hosted MCP consumer token (`ot_hmcp_...`) or a login JWT.",
+        "Invalid API key format. The SDK currently uses PreMan workspace API keys that start with `pm_live_`. Create one at https://app.preman.live/settings. Do not use a hosted MCP consumer token (`pm_hmcp_...`) or a login JWT.",
       );
     }
 
@@ -491,7 +491,7 @@ function extractErrorMessage(body: unknown): string | undefined {
 
 function enhanceAuthMessage(message: string): string {
   if (/invalid auth token|invalid or revoked api key|invalid api key/i.test(message)) {
-    return `${message}. Use an OpenTest workspace API key that starts with ot_live_. Create or copy one at https://www.flowtest.opentest.live/settings, then run \`preman init --api-key ot_live_...\`.`;
+    return `${message}. Use a PreMan workspace API key that starts with pm_live_. Create or copy one at https://app.preman.live/settings, then run \`preman init --api-key pm_live_...\`.`;
   }
   return message;
 }

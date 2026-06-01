@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const command = rawCommand as Command;
 
   if (command === "init") {
-    const apiKey = valueFor(args, "--api-key") ?? process.env["PREMAN_API_KEY"] ?? process.env["OPENTEST_API_KEY"];
+    const apiKey = valueFor(args, "--api-key") ?? process.env["PREMAN_API_KEY"];
     const apiUrl = valueFor(args, "--api-url") ?? process.env["PREMAN_API_URL"];
     const appUrl = valueFor(args, "--app-url") ?? process.env["PREMAN_APP_URL"];
     const config = await writeConfig(omitUndefined({ apiKey, apiUrl, appUrl }));
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
 
   const config = await readConfig();
   const client = new PremanClient(omitUndefined({
-    apiKey: process.env["PREMAN_API_KEY"] ?? process.env["OPENTEST_API_KEY"] ?? config.apiKey,
+    apiKey: process.env["PREMAN_API_KEY"] ?? config.apiKey,
     apiUrl: process.env["PREMAN_API_URL"] ?? config.apiUrl,
     appUrl: process.env["PREMAN_APP_URL"] ?? config.appUrl,
   }));
@@ -389,9 +389,9 @@ async function handleApplyCommand(args: string[], client: PremanClient): Promise
 async function handleInstallSnippetCommand(args: string[]): Promise<void> {
   const target = (valueFor(args, "--target") ?? "cursor") as McpInstallTarget;
   const serverName = valueFor(args, "--server-name") ?? valueFor(args, "--name") ?? "preman-hosted-mcp";
-  const url = requiredValue(args, "--url", "install-snippet requires --url https://flow.opentest.live/h/.../mcp");
+  const url = requiredValue(args, "--url", "install-snippet requires --url https://api.preman.live/h/.../mcp");
   const token = valueFor(args, "--token") ?? await resolveSecret(valueFor(args, "--token-env") ? secretFromEnv(valueFor(args, "--token-env") as string) : undefined);
-  if (!token) throw new Error("install-snippet requires --token ot_hmcp_... or --token-env TOKEN_VAR");
+  if (!token) throw new Error("install-snippet requires --token pm_hmcp_... or --token-env TOKEN_VAR");
   if (hasFlag(args, "--write")) {
     console.log(JSON.stringify(await writeMcpInstall({
       target,
@@ -479,7 +479,7 @@ function printHelp(): void {
   console.log(`PreMan SDK CLI
 
 Usage:
-  npx preman-sdk init --api-key ot_live_...
+  npx preman-sdk init --api-key pm_live_...
   npx preman-sdk register --file endpoints.json --upstream https://api.example.com --intent "Auth endpoints"
   npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.example.com
   npx preman-sdk import-docs --url https://docs.example.com/api --name "Public API MCP"
@@ -497,7 +497,7 @@ Usage:
   npx preman-sdk diff --approved preman-catalog.snapshot.json --mcp-id mcp_123
   npx preman-sdk typegen --file endpoints.json --out preman-endpoints.ts
   npx preman-sdk typegen --mcp-id mcp_123 --client --out preman-tools.ts
-  npx preman-sdk install-snippet --target cursor --server-name auth-mcp --url https://flow.opentest.live/h/.../mcp --token-env PREMAN_CONSUMER_TOKEN --write
+  npx preman-sdk install-snippet --target cursor --server-name auth-mcp --url https://api.preman.live/h/.../mcp --token-env PREMAN_CONSUMER_TOKEN --write
   npx preman-sdk status
 
 Global install:
@@ -505,11 +505,11 @@ Global install:
   preman status
 
 Options:
-  --api-url                 Override API URL (default: https://flow.opentest.live)
-  --app-url                 Override app URL (default: https://www.flowtest.opentest.live)
+  --api-url                 Override API URL (default: https://api.preman.live)
+  --app-url                 Override app URL (default: https://app.preman.live)
   --upstream                Your real API base URL. Example: https://api.company.com
   --allow-local             Allow localhost/private upstreams for local-only previews
-  --session-id              Reuse a Flow playground session id
+  --session-id              Reuse a PreMan playground session id
   --upstream-secret         Upstream API secret stored with a hosted MCP deploy
   --upstream-secret-env     Read upstream API secret from an environment variable
   --upstream-secret-type    bearer, api_key, basic, or custom
@@ -530,9 +530,9 @@ Options:
   --version                 Print CLI version
 
 Auth:
-  The CLI uses your OpenTest workspace API key, currently formatted as ot_live_...
-  Create one at https://www.flowtest.opentest.live/settings.
-  You can save it with init or set PREMAN_API_KEY / OPENTEST_API_KEY.
+  The CLI uses your PreMan workspace API key, currently formatted as pm_live_...
+  Create one at https://app.preman.live/settings.
+  You can save it with init or set PREMAN_API_KEY.
 
 Upstream:
   PreMan combines --upstream with each endpoint path.
@@ -540,7 +540,7 @@ Upstream:
   Do not use a marketing site unless that site is also your API.
   localhost only works for local testing; hosted MCPs need a deployed or tunneled API URL.
 
-The CLI is the on-ramp. Use the hosted workspace at https://www.flowtest.opentest.live
+The CLI is the on-ramp. Use the hosted workspace at https://app.preman.live
 to see customer tokens, revoke access, inspect audit logs, and review agent activity.
 `);
 }

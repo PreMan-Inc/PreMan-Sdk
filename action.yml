@@ -2,7 +2,7 @@ name: "PreMan endpoint registration"
 description: "Register or deploy API endpoints into PreMan from CI."
 inputs:
   api-key:
-    description: "OpenTest workspace API key. Use a GitHub secret, not a plain value."
+    description: "PreMan workspace API key. Use a GitHub secret, not a plain value."
     required: true
   endpoint-file:
     description: "Path to endpoints.json."
@@ -21,11 +21,11 @@ inputs:
   api-url:
     description: "PreMan API URL."
     required: false
-    default: "https://flow.opentest.live"
+    default: "https://api.preman.live"
   app-url:
     description: "PreMan workspace URL."
     required: false
-    default: "https://www.flowtest.opentest.live"
+    default: "https://app.preman.live"
 runs:
   using: "composite"
   steps:
