@@ -13,6 +13,7 @@ import { fromOpenApi, fromPostmanCollection } from "./importers.js";
 import { installCommand, writeMcpInstall, type McpInstallTarget } from "./installers.js";
 import { previewManifest, readManifest } from "./manifest.js";
 import { resolveSecret, secretFromEnv } from "./secrets.js";
+import { runLocalStdioTunnel } from "./tunnel.js";
 import { generateEndpointTypes, generateHostedMcpToolTypes } from "./typegen.js";
 import { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 import type { EndpointDefinition } from "./types.js";
@@ -23,6 +24,7 @@ type Command =
   | "deploy"
   | "import-docs"
   | "import-remote-mcp"
+  | "tunnel"
   | "hosted-mcps"
   | "token"
   | "tokens"
@@ -142,6 +144,11 @@ async function main(): Promise<void> {
       request: { idempotencyKey: valueFor(args, "--idempotency-key") },
     }));
     console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "tunnel") {
+    await handleTunnelCommand(args, client);
     return;
   }
 
@@ -406,10 +413,64 @@ async function handleInstallSnippetCommand(args: string[]): Promise<void> {
   console.log(installCommand({ serverName, url, token }, target));
 }
 
+async function handleTunnelCommand(args: string[], client: PremanClient): Promise<void> {
+  const env = localEnvFor(args);
+  const request = omitUndefined({
+    name: requiredValue(args, "--name", "tunnel requires --name \"Local MCP\""),
+    slug: valueFor(args, "--slug"),
+    command: requiredValue(args, "--command", "tunnel requires --command node"),
+    args: valuesFor(args, "--arg"),
+    cwd: valueFor(args, "--cwd"),
+    envNames: Object.keys(env),
+    accessMode: accessModeFor(args),
+    scopes: scopesForTunnel(args),
+    request: { idempotencyKey: valueFor(args, "--idempotency-key") },
+  });
+
+  if (hasFlag(args, "--register-only")) {
+    console.log(JSON.stringify(await client.createLocalStdioTunnel(request), null, 2));
+    return;
+  }
+
+  const tunnel = await runLocalStdioTunnel(client, {
+    ...request,
+    env,
+    pollWaitMs: numberFor(args, "--poll-wait-ms"),
+    onEvent: (event) => {
+      if (event.type === "registered") {
+        console.error(`PreMan local STDIO tunnel registered: ${event.tunnel.tunnelId}`);
+        if (event.tunnel.hostedUrl) console.error(`Hosted MCP URL: ${event.tunnel.hostedUrl}`);
+        if (event.tunnel.dashboardUrl) console.error(`Dashboard: ${event.tunnel.dashboardUrl}`);
+        return;
+      }
+      if (event.type === "started") {
+        console.error(`Local STDIO MCP started${event.pid ? ` (pid ${event.pid})` : ""}.`);
+        return;
+      }
+      if (event.type === "stderr") {
+        console.error(event.line);
+        return;
+      }
+      if (event.type === "closed") {
+        console.error(`Local STDIO MCP closed with code ${event.code ?? "unknown"}${event.signal ? ` (${event.signal})` : ""}.`);
+      }
+    },
+  });
+  console.log(JSON.stringify(tunnel, null, 2));
+}
+
 function valueFor(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   if (index === -1) return undefined;
   return args[index + 1];
+}
+
+function valuesFor(args: string[], flag: string): string[] | undefined {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag && args[index + 1]) values.push(args[index + 1] as string);
+  }
+  return values.length ? values : undefined;
 }
 
 function requiredValue(args: string[], flag: string, message: string): string {
@@ -433,6 +494,28 @@ function scopesFor(args: string[], command: string): string[] {
   const scopes = valueFor(args, "--scopes")?.split(",").map((s) => s.trim()).filter(Boolean);
   if (!scopes?.length) throw new Error(`${command} requires --scopes read:users,write:orders`);
   return scopes;
+}
+
+function scopesForTunnel(args: string[]): string[] | undefined {
+  const fromCsv = valueFor(args, "--scopes")?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  const repeated = valuesFor(args, "--scope") ?? [];
+  const scopes = [...fromCsv, ...repeated].filter(Boolean);
+  return scopes.length ? scopes : undefined;
+}
+
+function localEnvFor(args: string[]): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const entry of valuesFor(args, "--env") ?? []) {
+    const equals = entry.indexOf("=");
+    if (equals === -1) {
+      env[entry] = process.env[entry];
+      continue;
+    }
+    const name = entry.slice(0, equals);
+    if (!name) throw new Error("--env entries must be NAME or NAME=value");
+    env[name] = entry.slice(equals + 1);
+  }
+  return env;
 }
 
 async function endpointsFromRequiredFile(args: string[], command: string): Promise<EndpointDefinition[]> {
@@ -484,6 +567,7 @@ Usage:
   npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.example.com
   npx preman-sdk import-docs --url https://docs.example.com/api --name "Public API MCP"
   npx preman-sdk import-remote-mcp --url https://remote-mcp.example.com/mcp --name "Remote MCP Proxy"
+  npx preman-sdk tunnel --name "Local Files MCP" --command npx --arg -y --arg @modelcontextprotocol/server-filesystem --arg .
   npx preman-sdk hosted-mcps
   npx preman-sdk hosted-mcps --id mcp_123
   npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
@@ -517,6 +601,11 @@ Options:
   --auth-name               Header/query name for upstream auth (default: Authorization)
   --auth-prefix             Prefix for the secret (default server behavior: Bearer )
   --access-mode             public or token
+  --arg                     Repeat for each local STDIO MCP command argument used by tunnel
+  --env                     Repeat NAME or NAME=value for local STDIO MCP env vars; values stay local
+  --scope                   Repeat to attach an allowed tool scope to a local STDIO tunnel
+  --register-only           Register a local STDIO tunnel without starting the local process
+  --poll-wait-ms            Long-poll wait time for local STDIO tunnel messages
   --max-endpoints           Max docs endpoints to import (default server behavior: 80)
   --preview                 For import-docs, discover and return generated spec without deploying
   --approved                Approved catalog snapshot for diff

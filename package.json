@@ -33,6 +33,10 @@
       "types": "./dist/secrets.d.ts",
       "import": "./dist/secrets.js"
     },
+    "./tunnel": {
+      "types": "./dist/tunnel.d.ts",
+      "import": "./dist/tunnel.js"
+    },
     "./typegen": {
       "types": "./dist/typegen.d.ts",
       "import": "./dist/typegen.js"
@@ -58,6 +62,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
+    "integration": "PREMAN_INTEGRATION=1 npm test",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

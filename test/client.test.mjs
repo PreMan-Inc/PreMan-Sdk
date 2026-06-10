@@ -161,6 +161,101 @@ test("importRemoteMcp creates a gateway proxy for an existing MCP server", async
   assert.equal(result.generatedSpec.proxy_type, "remote_mcp");
 });
 
+test("createLocalStdioTunnel registers local STDIO metadata without sending env values", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        tunnel_id: "tun_123",
+        hosted_mcp: { id: "mcp_stdio", name: "Local Files MCP" },
+        hosted_mcp_url: "https://api.preman.live/h/mcp_stdio/mcp",
+        local_stdio: {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+          cwd: "/workspace",
+          env_names: ["FILESYSTEM_ROOT"],
+        },
+        install_snippet: {
+          url: "https://api.preman.live/h/mcp_stdio/mcp",
+          mcp_json: { mcpServers: {} },
+        },
+      });
+    },
+  });
+
+  const result = await client.createLocalStdioTunnel({
+    name: "Local Files MCP",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+    cwd: "/workspace",
+    envNames: ["FILESYSTEM_ROOT"],
+    scopes: ["files:read"],
+    accessMode: "token",
+  });
+
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/local-stdio-tunnels");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    name: "Local Files MCP",
+    local_stdio: {
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      cwd: "/workspace",
+      env_names: ["FILESYSTEM_ROOT"],
+    },
+    access_mode: "token",
+    scopes: ["files:read"],
+  });
+  assert.equal(result.tunnelId, "tun_123");
+  assert.equal(result.mcpId, "mcp_stdio");
+  assert.equal(result.dashboardUrl, "https://app.preman.live/hosted-mcps/mcp_stdio");
+  assert.deepEqual(result.localStdio.envNames, ["FILESYSTEM_ROOT"]);
+});
+
+test("local STDIO tunnel poll and response methods map message routes", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/poll")) {
+        return jsonResponse({
+          messages: [
+            {
+              id: "msg_1",
+              message: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+              received_at: "2026-06-10T00:00:00Z",
+            },
+          ],
+        });
+      }
+      return jsonResponse({});
+    },
+  });
+
+  const polled = await client.pollLocalStdioTunnelMessages({ tunnelId: "tun_123", waitMs: 500 });
+  await client.sendLocalStdioTunnelMessage({
+    tunnelId: "tun_123",
+    message: { jsonrpc: "2.0", id: 1, result: { tools: [] } },
+  });
+  await client.updateLocalStdioTunnelStatus({
+    tunnelId: "tun_123",
+    status: "connected",
+  });
+
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/local-stdio-tunnels/tun_123/poll");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { wait_ms: 500 });
+  assert.equal(polled.messages[0].id, "msg_1");
+  assert.deepEqual(polled.messages[0].message, { jsonrpc: "2.0", id: 1, method: "tools/list" });
+  assert.equal(calls[1].url, "https://api.preman.live/hosted-mcps/local-stdio-tunnels/tun_123/messages");
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    message: { jsonrpc: "2.0", id: 1, result: { tools: [] } },
+  });
+  assert.equal(calls[2].url, "https://api.preman.live/hosted-mcps/local-stdio-tunnels/tun_123/status");
+  assert.deepEqual(JSON.parse(calls[2].init.body), { status: "connected" });
+});
+
 test("listHostedMcps and getHostedMcp read hosted MCP inventory", async () => {
   const calls = [];
   const client = new PremanClient({

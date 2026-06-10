@@ -5,6 +5,7 @@ import {
   type CreateTokenResponse,
   type DeployMcpRequest,
   type DeployMcpResponse,
+  type CreateLocalStdioTunnelRequest,
   type HostedMcpInstallSnippet,
   type GetHostedMcpResponse,
   type HostedMcpImportResponse,
@@ -12,6 +13,9 @@ import {
   type GetHostedMcpCatalogResponse,
   type ImportFromDocsRequest,
   type ImportRemoteMcpRequest,
+  type LocalStdioTunnelPollRequest,
+  type LocalStdioTunnelPollResponse,
+  type LocalStdioTunnelResponse,
   type ListHostedMcpsResponse,
   type ListTokensRequest,
   type ListTokensResponse,
@@ -24,7 +28,9 @@ import {
   type RevokeTokenResponse,
   type RotateTokenRequest,
   type RotateTokenResponse,
+  type SendLocalStdioTunnelMessageRequest,
   type TokenMetadata,
+  type UpdateLocalStdioTunnelStatusRequest,
   type VerifyTokenRequest,
   type VerifyTokenResponse,
 } from "./types.js";
@@ -166,6 +172,71 @@ export class PremanClient {
       request: request.request,
     });
     return normalizeHostedMcpImport(response, this.appUrl);
+  }
+
+  async createLocalStdioTunnel(request: CreateLocalStdioTunnelRequest): Promise<LocalStdioTunnelResponse> {
+    requireString(request.name, "name");
+    requireString(request.command, "command");
+    const response = await this.request<Record<string, unknown>>("/hosted-mcps/local-stdio-tunnels", {
+      method: "POST",
+      body: omitUndefined({
+        name: request.name,
+        slug: request.slug,
+        local_stdio: omitUndefined({
+          command: request.command,
+          args: request.args,
+          cwd: request.cwd,
+          env_names: request.envNames,
+        }),
+        access_mode: request.accessMode,
+        scopes: request.scopes,
+      }),
+      request: request.request,
+    });
+    return normalizeLocalStdioTunnel(response, this.appUrl);
+  }
+
+  async pollLocalStdioTunnelMessages(request: LocalStdioTunnelPollRequest): Promise<LocalStdioTunnelPollResponse> {
+    requireString(request.tunnelId, "tunnelId");
+    const response = await this.request<Record<string, unknown>>(
+      `/hosted-mcps/local-stdio-tunnels/${encodeURIComponent(request.tunnelId)}/poll`,
+      {
+        method: "POST",
+        body: omitUndefined({ wait_ms: request.waitMs }),
+        request: request.request,
+      },
+    );
+    return {
+      messages: arrayOfObjectsAt(response, "messages").map(normalizeLocalStdioTunnelMessage),
+      raw: response,
+    };
+  }
+
+  async sendLocalStdioTunnelMessage(request: SendLocalStdioTunnelMessageRequest): Promise<void> {
+    requireString(request.tunnelId, "tunnelId");
+    await this.request<Record<string, unknown>>(
+      `/hosted-mcps/local-stdio-tunnels/${encodeURIComponent(request.tunnelId)}/messages`,
+      {
+        method: "POST",
+        body: { message: request.message },
+        request: request.request,
+      },
+    );
+  }
+
+  async updateLocalStdioTunnelStatus(request: UpdateLocalStdioTunnelStatusRequest): Promise<void> {
+    requireString(request.tunnelId, "tunnelId");
+    await this.request<Record<string, unknown>>(
+      `/hosted-mcps/local-stdio-tunnels/${encodeURIComponent(request.tunnelId)}/status`,
+      {
+        method: "POST",
+        body: omitUndefined({
+          status: request.status,
+          detail: request.detail,
+        }),
+        request: request.request,
+      },
+    );
   }
 
   async listHostedMcps(): Promise<ListHostedMcpsResponse> {
@@ -537,6 +608,13 @@ function stringArrayAt(value: Record<string, unknown>, key: string): string[] {
   return Array.isArray(item) ? item.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
+function arrayOfObjectsAt(value: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const item = value[key];
+  return Array.isArray(item)
+    ? item.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+    : [];
+}
+
 function normalizeVerifyTokenIdentity(value: Record<string, unknown>): {
   tokenId?: string;
   agentId?: string;
@@ -582,6 +660,50 @@ function normalizeHostedMcpImport(response: Record<string, unknown>, appUrl: str
     generatedSpec: objectOrUndefinedAt(response, "generated_spec"),
     notice: stringAt(response, "notice") || undefined,
     raw: response,
+  };
+}
+
+function normalizeLocalStdioTunnel(response: Record<string, unknown>, appUrl: string): LocalStdioTunnelResponse {
+  const tunnel = objectAt(response, "tunnel");
+  const hosted = objectAt(response, "hosted_mcp") as HostedMcpRecord;
+  const installSnippet = objectAt(response, "install_snippet");
+  const tunnelId = stringAt(response, "tunnel_id") || stringAt(tunnel, "id") || stringAt(tunnel, "tunnel_id");
+  const mcpId = stringAt(response, "mcp_id") || stringAt(hosted, "id") || stringAt(tunnel, "mcp_id");
+  return {
+    tunnelId,
+    mcpId: mcpId || undefined,
+    name: stringAt(response, "name") || stringAt(hosted, "name") || stringAt(tunnel, "name") || undefined,
+    status: stringAt(response, "status") || stringAt(tunnel, "status") || undefined,
+    connectorUrl: nullableStringAt(response, "connector_url") ?? nullableStringAt(tunnel, "connector_url"),
+    hostedUrl: nullableStringAt(response, "hosted_mcp_url") ?? nullableStringAt(tunnel, "hosted_mcp_url"),
+    dashboardUrl: mcpId ? `${appUrl}/hosted-mcps/${encodeURIComponent(mcpId)}` : undefined,
+    localStdio: normalizeLocalStdioCommand(objectAt(response, "local_stdio")),
+    installSnippet: Object.keys(installSnippet).length ? normalizeInstallSnippet(installSnippet) : null,
+    raw: response,
+  };
+}
+
+function normalizeLocalStdioCommand(value: Record<string, unknown>) {
+  const command = stringAt(value, "command");
+  if (!command) return undefined;
+  const args = stringArrayAt(value, "args");
+  const envNames = stringArrayAt(value, "env_names").length ? stringArrayAt(value, "env_names") : stringArrayAt(value, "envNames");
+  return omitUndefined({
+    command,
+    args: args.length ? args : undefined,
+    cwd: stringAt(value, "cwd") || undefined,
+    envNames: envNames.length ? envNames : undefined,
+    env_names: envNames.length ? envNames : undefined,
+  });
+}
+
+function normalizeLocalStdioTunnelMessage(value: Record<string, unknown>) {
+  const message = objectAt(value, "message");
+  return {
+    id: stringAt(value, "id") || stringAt(value, "message_id") || undefined,
+    message,
+    receivedAt: stringAt(value, "received_at") || stringAt(value, "receivedAt") || undefined,
+    raw: value,
   };
 }
 

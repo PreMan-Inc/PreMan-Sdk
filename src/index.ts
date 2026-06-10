@@ -11,6 +11,7 @@ export { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
 export { hostedMcpJson, installCommand, writeMcpInstall } from "./installers.js";
 export { parseManifest, previewManifest, readManifest } from "./manifest.js";
 export { resolveSecret, secretFromEnv } from "./secrets.js";
+export { runLocalStdioTunnel } from "./tunnel.js";
 export {
   createCatalogSnapshot,
   diffCatalogSnapshots,
@@ -22,6 +23,7 @@ export { generateEndpointTypes, generateHostedMcpToolTypes, schemaToType } from 
 export type {
   AuditEvent,
   AuditLogResponse,
+  CreateLocalStdioTunnelRequest,
   CreateTokenRequest,
   CreateTokenResponse,
   DeployMcpRequest,
@@ -40,6 +42,11 @@ export type {
   ImportFromDocsRequest,
   ImportRemoteMcpRequest,
   JsonSchema,
+  LocalStdioCommand,
+  LocalStdioTunnelMessage,
+  LocalStdioTunnelPollRequest,
+  LocalStdioTunnelPollResponse,
+  LocalStdioTunnelResponse,
   ListHostedMcpsResponse,
   ListTokensRequest,
   ListTokensResponse,
@@ -55,7 +62,9 @@ export type {
   RevokeTokenResponse,
   RotateTokenRequest,
   RotateTokenResponse,
+  SendLocalStdioTunnelMessageRequest,
   TokenMetadata,
+  UpdateLocalStdioTunnelStatusRequest,
   UpstreamAuthStyle,
   UpstreamSecretType,
   VerifyTokenRequest,

@@ -139,6 +139,26 @@ npx preman-sdk import-remote-mcp \
   --auth-prefix "Bearer "
 ```
 
+Register and run a local STDIO MCP through a PreMan tunnel:
+
+```bash
+npx preman-sdk tunnel \
+  --name "Local Files MCP" \
+  --command npx \
+  --arg -y \
+  --arg @modelcontextprotocol/server-filesystem \
+  --arg . \
+  --scope files:read \
+  --env FILESYSTEM_ROOT
+```
+
+`tunnel` sends command metadata and env var names to PreMan, but env values stay
+on your machine. The local connector process forwards JSON-RPC messages between
+the hosted PreMan gateway and the STDIO MCP process so hosted audit logs,
+consumer-token scoping, and policy checks can stay in the PreMan runtime. Use
+`--register-only` when you only want to create the hosted tunnel record without
+starting the local process.
+
 List the hosted MCPs in your workspace:
 
 ```bash
@@ -212,6 +232,23 @@ const remoteMcp = await preman.importRemoteMcp({
 
 console.log(docsMcp.hostedUrl);
 console.log(remoteMcp.installSnippet?.mcpJsonString);
+```
+
+Start a local STDIO tunnel from TypeScript:
+
+```ts
+import { PremanClient, runLocalStdioTunnel } from "preman-sdk";
+
+const preman = new PremanClient({ apiKey: process.env.PREMAN_API_KEY });
+
+await runLocalStdioTunnel(preman, {
+  name: "Local Files MCP",
+  command: "npx",
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+  envNames: ["FILESYSTEM_ROOT"],
+  env: { FILESYSTEM_ROOT: process.env.FILESYSTEM_ROOT },
+  scopes: ["files:read"],
+});
 ```
 
 ## Token Scoping
@@ -434,6 +471,7 @@ npx preman-sdk init --api-key pm_live_...
 npx preman-sdk status
 npx preman-sdk register --file endpoints.json --upstream https://api.company.com
 npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.company.com
+npx preman-sdk tunnel --name "Local Files MCP" --command npx --arg -y --arg @modelcontextprotocol/server-filesystem --arg .
 npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
 npx preman-sdk token list --mcp-id mcp_123
 npx preman-sdk token revoke --mcp-id mcp_123 --token-id token_123
@@ -506,6 +544,20 @@ Hosted MCP calls are already authenticated, scoped, and audited by PreMan.
 npm install
 npm test
 npm run build
+```
+
+Live staging checks are opt-in so unit tests stay offline and fast:
+
+```bash
+PREMAN_API_KEY=pm_live_... npm run integration
+```
+
+Optional integration fixtures:
+
+```bash
+PREMAN_API_URL=https://api.preman.live
+PREMAN_TEST_OPENAPI_URL=https://petstore3.swagger.io/api/v3/openapi.json
+PREMAN_TEST_REMOTE_MCP_URL=https://mcp.example.com/mcp
 ```
 
 ## License

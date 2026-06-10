@@ -145,6 +145,70 @@ export type ImportRemoteMcpRequest = {
   request?: RequestOptions;
 };
 
+export type LocalStdioCommand = {
+  command: string;
+  args?: string[];
+  cwd?: string;
+  envNames?: string[];
+  env_names?: string[];
+};
+
+export type CreateLocalStdioTunnelRequest = {
+  name: string;
+  slug?: string;
+  command: string;
+  args?: string[];
+  cwd?: string;
+  envNames?: string[];
+  accessMode?: HostedMcpAccessMode;
+  scopes?: string[];
+  request?: RequestOptions;
+};
+
+export type LocalStdioTunnelMessage = {
+  id?: string;
+  message: Record<string, unknown>;
+  receivedAt?: string;
+  raw?: Record<string, unknown>;
+};
+
+export type LocalStdioTunnelPollRequest = {
+  tunnelId: string;
+  waitMs?: number;
+  request?: RequestOptions;
+};
+
+export type LocalStdioTunnelPollResponse = {
+  messages: LocalStdioTunnelMessage[];
+  raw: Record<string, unknown>;
+};
+
+export type SendLocalStdioTunnelMessageRequest = {
+  tunnelId: string;
+  message: Record<string, unknown>;
+  request?: RequestOptions;
+};
+
+export type UpdateLocalStdioTunnelStatusRequest = {
+  tunnelId: string;
+  status: "starting" | "connected" | "error" | "closed";
+  detail?: string;
+  request?: RequestOptions;
+};
+
+export type LocalStdioTunnelResponse = {
+  tunnelId: string;
+  mcpId?: string;
+  name?: string;
+  status?: string;
+  connectorUrl?: string | null;
+  hostedUrl?: string | null;
+  dashboardUrl?: string;
+  localStdio?: LocalStdioCommand;
+  installSnippet?: HostedMcpInstallSnippet | null;
+  raw: Record<string, unknown>;
+};
+
 export type HostedMcpImportResponse = {
   mcpId?: string;
   name?: string;
