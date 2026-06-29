@@ -6,6 +6,8 @@ import {
   type DeployMcpRequest,
   type DeployMcpResponse,
   type CreateLocalStdioTunnelRequest,
+  type GetCapabilitiesRequest,
+  type GetUpstreamHostingStatusRequest,
   type HostedMcpInstallSnippet,
   type GetHostedMcpResponse,
   type HostedMcpImportResponse,
@@ -19,6 +21,7 @@ import {
   type ListHostedMcpsResponse,
   type ListTokensRequest,
   type ListTokensResponse,
+  type PremanCapabilities,
   type PremanClientOptions,
   type RegisterEndpointsRequest,
   type RegisterEndpointsResponse,
@@ -29,13 +32,26 @@ import {
   type RotateTokenRequest,
   type RotateTokenResponse,
   type SendLocalStdioTunnelMessageRequest,
-  type TokenMetadata,
   type UpdateLocalStdioTunnelStatusRequest,
+  type StartConsumerUpstreamOAuthRequest,
+  type StartUpstreamOAuthRequest,
+  type TokenMetadata,
+  type UpstreamHostingRecord,
+  type UpstreamOAuthProviderConfig,
+  type UpstreamOAuthStartResponse,
   type VerifyTokenRequest,
   type VerifyTokenResponse,
+  type WaitForUpstreamHostingRequest,
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
 import { normalizeHostedMcpCatalog } from "./catalog.js";
+import {
+  PREMAN_CAPABILITIES_PATH,
+  buildUpstreamDeployBody,
+  defaultPremanCapabilities,
+  normalizePremanCapabilities,
+  normalizeUpstreamHostingRecord,
+} from "./upstream-hosting.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_API_URL = "https://api.preman.live";
@@ -59,7 +75,7 @@ export class PremanClient {
     }
     if (!apiKey.startsWith("pm_live_")) {
       throw new PremanConfigError(
-        "Invalid API key format. The SDK currently uses PreMan workspace API keys that start with `pm_live_`. Create one at https://app.preman.live/settings. Do not use a hosted MCP consumer token (`pm_hmcp_...`) or a login JWT.",
+        "Invalid API key format. The SDK uses PreMan workspace API keys that start with `pm_live_`. Create one at https://app.preman.live/settings. Do not use a hosted MCP consumer token (`pm_hmcp_...`) or a login JWT.",
       );
     }
 
@@ -99,40 +115,84 @@ export class PremanClient {
     };
   }
 
+  async getCapabilities(request: GetCapabilitiesRequest = {}): Promise<PremanCapabilities> {
+    try {
+      const response = await this.request<Record<string, unknown>>(PREMAN_CAPABILITIES_PATH, {
+        method: "GET",
+        request: request.request,
+      });
+      return normalizePremanCapabilities(response);
+    } catch (error) {
+      if (error instanceof PremanError && error.status === 404) {
+        return defaultPremanCapabilities();
+      }
+      throw error;
+    }
+  }
+
+  async getUpstreamHostingStatus(request: GetUpstreamHostingStatusRequest): Promise<UpstreamHostingRecord> {
+    requireString(request.mcpId, "mcpId");
+    const response = await this.request<Record<string, unknown>>(
+      `/hosted-mcps/${encodeURIComponent(request.mcpId)}/upstream-hosting`,
+      { method: "GET", request: request.request },
+    );
+    const hosting = objectAt(response, "upstream_hosting");
+    const payload = Object.keys(hosting).length ? hosting : response;
+    return normalizeUpstreamHostingRecord(request.mcpId, payload);
+  }
+
+  async waitForUpstreamHosting(request: WaitForUpstreamHostingRequest): Promise<UpstreamHostingRecord> {
+    const pollIntervalMs = request.pollIntervalMs ?? 3_000;
+    const timeoutMs = request.timeoutMs ?? 300_000;
+    const readyStatuses = request.readyStatuses ?? ["running"];
+    const started = Date.now();
+
+    while (true) {
+      const status = await this.getUpstreamHostingStatus(request);
+      if (readyStatuses.includes(status.status)) {
+        return status;
+      }
+      if (status.status === "failed" || status.status === "stopped") {
+        throw new PremanError(
+          status.message || `Upstream hosting entered status "${status.status}".`,
+          { status: 424, body: status.raw },
+        );
+      }
+      if (Date.now() - started >= timeoutMs) {
+        throw new PremanError(
+          `Timed out waiting for upstream hosting to reach ${readyStatuses.join(" or ")} (last status: ${status.status}).`,
+          { status: 408, body: status.raw },
+        );
+      }
+      await sleep(pollIntervalMs);
+    }
+  }
+
   async deployMcp(request: DeployMcpRequest): Promise<DeployMcpResponse> {
     requireString(request.name, "name");
-    requireString(request.upstreamBaseUrl, "upstreamBaseUrl");
     if (!request.endpoints?.length) {
       throw new PremanConfigError("deployMcp requires endpoints.");
     }
     const sessionId = request.sessionId ?? randomUUID();
+    const upstreamFields = buildUpstreamDeployBody(request);
     const response = await this.request<Record<string, unknown>>(`/agent-sessions/${encodeURIComponent(sessionId)}/mcp/deploy`, {
       method: "POST",
-      body: {
+      body: omitUndefined({
         name: request.name,
-        upstream_base_url: request.upstreamBaseUrl,
+        ...upstreamFields,
         endpoints: request.endpoints.map(toBackendEndpoint),
         initial_upstream_secret: request.initialUpstreamSecret,
         initial_upstream_secret_type: request.initialUpstreamSecretType,
         upstream_auth_style: request.upstreamAuthStyle,
         initial_consumer_label: request.initialConsumerLabel === undefined ? "default-consumer" : request.initialConsumerLabel,
-      },
+        upstream_oauth_provider: request.upstreamOAuthProvider
+          ? toBackendOAuthProvider(request.upstreamOAuthProvider)
+          : undefined,
+        access_mode: request.accessMode,
+      }),
       request: request.request,
     });
-    const hosted = objectAt(response, "hosted_mcp");
-    const mcpId = stringAt(hosted, "id");
-    const name = stringAt(hosted, "name") || request.name;
-    const hostedUrl = stringAt(response, "hosted_mcp_url");
-    return {
-      mcpId,
-      name,
-      hostedUrl,
-      dashboardUrl: this.dashboardUrl(`/hosted-mcps/${encodeURIComponent(mcpId)}`),
-      toolCount: numberAt(response, "tool_count"),
-      rawConsumerToken: nullableStringAt(response, "raw_consumer_token"),
-      consumerToken: objectAt(response, "consumer_token"),
-      installSnippet: normalizeInstallSnippet(objectAt(response, "install_snippet")),
-    };
+    return normalizeDeployMcpResponse(response, request.name, this.appUrl);
   }
 
   async importFromDocs(request: ImportFromDocsRequest): Promise<HostedMcpImportResponse> {
@@ -269,6 +329,51 @@ export class PremanClient {
       catalog: normalizeHostedMcpCatalog(detail.raw),
       raw: detail.raw,
     };
+  }
+
+  async startUpstreamOAuth(request: StartUpstreamOAuthRequest): Promise<UpstreamOAuthStartResponse> {
+    requireString(request.mcpId, "mcpId");
+    const response = await this.request<Record<string, unknown>>(
+      `/hosted-mcps/${encodeURIComponent(request.mcpId)}/upstream-oauth/start`,
+      { method: "POST", request: request.request },
+    );
+    return normalizeUpstreamOAuthStart(response);
+  }
+
+  async startConsumerUpstreamOAuth(
+    request: StartConsumerUpstreamOAuthRequest,
+  ): Promise<UpstreamOAuthStartResponse> {
+    requireString(request.mcpId, "mcpId");
+    requireString(request.consumerToken, "consumerToken");
+    const apiUrl = stripTrailingSlash(request.apiUrl ?? this.apiUrl);
+    const timeoutMs = request.request?.timeoutMs ?? this.timeoutMs;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const url = `${apiUrl}/h/${encodeURIComponent(request.mcpId)}/upstream-oauth/start`;
+
+    try {
+      const response = await this.fetchImpl(url, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${request.consumerToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": "preman-sdk",
+          ...request.request?.headers,
+        },
+      });
+      clearTimeout(timeout);
+      const body = await readBody(response);
+      if (!response.ok) {
+        throw errorFromResponse(response, body);
+      }
+      return normalizeUpstreamOAuthStart(
+        body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {},
+      );
+    } catch (error) {
+      clearTimeout(timeout);
+      throw error;
+    }
   }
 
   async createToken(request: CreateTokenRequest): Promise<CreateTokenResponse> {
@@ -581,6 +686,63 @@ function toBackendEndpoint(endpoint: import("./types.js").EndpointDefinition): R
     query_schema: endpoint.query_schema ?? endpoint.querySchema,
     scope: endpoint.scope,
   });
+}
+
+function toBackendOAuthProvider(profile: UpstreamOAuthProviderConfig): Record<string, unknown> {
+  return omitUndefined({
+    provider: profile.provider,
+    authorization_endpoint: profile.authorizationEndpoint,
+    token_endpoint: profile.tokenEndpoint,
+    scopes: profile.scopes,
+    client_id: profile.clientId,
+    client_secret: profile.clientSecret,
+  });
+}
+
+function normalizeDeployMcpResponse(
+  response: Record<string, unknown>,
+  fallbackName: string,
+  appUrl: string,
+): DeployMcpResponse {
+  const hosted = objectAt(response, "hosted_mcp");
+  const mcpId = stringAt(hosted, "id");
+  const name = stringAt(hosted, "name") || fallbackName;
+  const hostedUrl = stringAt(response, "hosted_mcp_url");
+  const upstreamHostingRaw = objectAt(response, "upstream_hosting");
+  const upstreamModeRaw = response["upstream_mode"] ?? hosted["upstream_mode"] ?? upstreamHostingRaw["upstream_mode"];
+  const upstreamMode = upstreamModeRaw === "preman" || upstreamModeRaw === "external" ? upstreamModeRaw : undefined;
+  const upstreamHosting = Object.keys(upstreamHostingRaw).length
+    ? normalizeUpstreamHostingRecord(mcpId, upstreamHostingRaw)
+    : upstreamMode === "preman"
+      ? normalizeUpstreamHostingRecord(mcpId, {
+          upstream_mode: "preman",
+          status: response["upstream_status"] ?? hosted["upstream_status"] ?? "pending",
+          upstream_base_url: hosted["upstream_base_url"] ?? response["upstream_base_url"],
+        })
+      : null;
+
+  return {
+    mcpId,
+    name,
+    hostedUrl,
+    dashboardUrl: `${appUrl}/hosted-mcps/${encodeURIComponent(mcpId)}`,
+    toolCount: numberAt(response, "tool_count"),
+    upstreamMode,
+    upstreamHosting,
+    rawConsumerToken: nullableStringAt(response, "raw_consumer_token"),
+    consumerToken: objectAt(response, "consumer_token"),
+    installSnippet: normalizeInstallSnippet(objectAt(response, "install_snippet")),
+  };
+}
+
+function normalizeUpstreamOAuthStart(response: Record<string, unknown>): UpstreamOAuthStartResponse {
+  return {
+    authorizationUrl: stringAt(response, "authorization_url") || stringAt(response, "authorizationUrl"),
+    state: stringAt(response, "state"),
+    expiresAt: stringAt(response, "expires_at") || stringAt(response, "expiresAt"),
+    provider: stringAt(response, "provider"),
+    instructions: stringAt(response, "instructions"),
+  };
 }
 
 function objectAt(value: Record<string, unknown>, key: string): Record<string, unknown> {

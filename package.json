@@ -1,6 +1,6 @@
 {
   "name": "preman-sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Production TypeScript SDK and CLI for turning APIs into hosted MCP servers with scoped agent tokens, audit logs, and policy controls.",
   "type": "module",
   "license": "MIT",
@@ -40,6 +40,10 @@
     "./typegen": {
       "types": "./dist/typegen.d.ts",
       "import": "./dist/typegen.js"
+    },
+    "./upstream-hosting": {
+      "types": "./dist/upstream-hosting.d.ts",
+      "import": "./dist/upstream-hosting.js"
     }
   },
   "main": "./dist/index.js",

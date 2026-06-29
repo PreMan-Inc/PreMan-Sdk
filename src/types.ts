@@ -45,16 +45,101 @@ export type RegisterEndpointsResponse = {
   endpointsUrl: string;
 };
 
+/** Who runs the HTTP API that implements tool endpoints. */
+export type UpstreamMode = "external" | "preman";
+
+/** Lifecycle for a PreMan-provisioned upstream workload. */
+export type UpstreamHostingRuntimeStatus =
+  | "pending"
+  | "building"
+  | "running"
+  | "failed"
+  | "stopped"
+  | "unknown";
+
+export type UpstreamBuildConfig = {
+  /** Pre-built OCI image reference, e.g. ghcr.io/org/spotify-mcp:1.0.0 */
+  image?: string;
+  /** Dockerfile path relative to build context, default Dockerfile */
+  dockerfile?: string;
+  contextPath?: string;
+  context_path?: string;
+  /** Tarball or git archive URL for remote builds */
+  buildContextUrl?: string;
+  build_context_url?: string;
+  port?: number;
+  healthPath?: string;
+  health_path?: string;
+  env?: Record<string, string>;
+  secretNames?: string[];
+  secret_names?: string[];
+};
+
+export type UpstreamHostingCapabilities = {
+  featureId: string;
+  supported: boolean;
+  modes: UpstreamMode[];
+  defaultMode: UpstreamMode;
+  supportsDockerfileBuild?: boolean;
+  supportsImageDeploy?: boolean;
+  supportsBuildContextUrl?: boolean;
+};
+
+export type PremanCapabilities = {
+  version?: string;
+  upstreamHosting: UpstreamHostingCapabilities;
+  raw?: Record<string, unknown>;
+};
+
+export type GetCapabilitiesRequest = {
+  request?: RequestOptions;
+};
+
+export type UpstreamHostingRecord = {
+  mcpId: string;
+  upstreamMode: UpstreamMode;
+  status: UpstreamHostingRuntimeStatus;
+  upstreamBaseUrl?: string | null;
+  publicUrl?: string | null;
+  buildId?: string | null;
+  message?: string | null;
+  raw?: Record<string, unknown>;
+};
+
+export type GetUpstreamHostingStatusRequest = {
+  mcpId: string;
+  request?: RequestOptions;
+};
+
+export type WaitForUpstreamHostingRequest = GetUpstreamHostingStatusRequest & {
+  /** Poll interval in ms (default 3000) */
+  pollIntervalMs?: number;
+  /** Max wait in ms (default 300000) */
+  timeoutMs?: number;
+  /** Status values that resolve the wait (default: ["running"]) */
+  readyStatuses?: UpstreamHostingRuntimeStatus[];
+};
+
 export type DeployMcpRequest = {
   name: string;
-  upstreamBaseUrl: string;
+  /**
+   * Required when upstreamMode is "external" (default).
+   * Ignored when upstreamMode is "preman" unless the API accepts an override.
+   */
+  upstreamBaseUrl?: string;
+  /** Default "external". Use "preman" to have PreMan host the upstream API. */
+  upstreamMode?: UpstreamMode;
+  /** Required when upstreamMode is "preman". */
+  upstreamBuild?: UpstreamBuildConfig;
   sessionId?: string;
   endpoints?: EndpointDefinition[];
   scopes?: string[];
   initialUpstreamSecret?: string;
   initialUpstreamSecretType?: "bearer" | "api_key" | "basic" | "custom";
-  upstreamAuthStyle?: Record<string, unknown>;
+  upstreamAuthStyle?: UpstreamAuthStyle;
   initialConsumerLabel?: string | null;
+  upstreamOAuthProvider?: UpstreamOAuthProviderConfig;
+  accessMode?: HostedMcpAccessMode;
   request?: RequestOptions;
 };
 
@@ -64,6 +149,8 @@ export type DeployMcpResponse = {
   hostedUrl: string;
   dashboardUrl: string;
   toolCount: number;
+  upstreamMode?: UpstreamMode;
+  upstreamHosting?: UpstreamHostingRecord | null;
   rawConsumerToken?: string | null;
   consumerToken?: Record<string, unknown> | null;
   installSnippet?: HostedMcpInstallSnippet | null;
@@ -79,10 +166,42 @@ export type UpstreamAuthStyle = {
   prefix?: string;
 };
 
+export type UpstreamOAuthProviderConfig = {
+  provider?: string;
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  scopes: string;
+  clientId: string;
+  clientSecret: string;
+};
+
+export type UpstreamOAuthStartResponse = {
+  authorizationUrl: string;
+  state: string;
+  expiresAt: string;
+  provider: string;
+  instructions: string;
+};
+
+export type StartUpstreamOAuthRequest = {
+  mcpId: string;
+  request?: RequestOptions;
+};
+
+export type StartConsumerUpstreamOAuthRequest = {
+  mcpId: string;
+  consumerToken: string;
+  apiUrl?: string;
+  request?: RequestOptions;
+};
+
 export type HostedMcpRecord = Record<string, unknown> & {
   id?: string;
   name?: string;
   upstream_base_url?: string;
+  upstream_mode?: UpstreamMode;
+  upstream_status?: UpstreamHostingRuntimeStatus;
+  upstream_oauth_provider?: Record<string, unknown> | null;
   access_mode?: HostedMcpAccessMode;
   status?: string;
   endpoint_selection?: unknown;

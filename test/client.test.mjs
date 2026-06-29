@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PremanAuthError, PremanClient, PremanError, verifyBearerToken } from "../dist/index.js";
+import { PremanAuthError, PremanClient, PremanConfigError, PremanError, verifyBearerToken } from "../dist/index.js";
 
 function jsonResponse(body, init = {}) {
   return new Response(JSON.stringify(body), {
@@ -10,7 +10,14 @@ function jsonResponse(body, init = {}) {
   });
 }
 
-test("registerEndpoints writes to a PreMan agent session", async () => {
+test("client rejects legacy OpenTest key prefixes", () => {
+  assert.throws(
+    () => new PremanClient({ apiKey: "ot_live_12345678901234567890123456789012" }),
+    (error) => error instanceof PremanConfigError && /pm_live_/.test(error.message),
+  );
+});
+
+test("registerEndpoints writes to an agent session", async () => {
   const calls = [];
   const client = new PremanClient({
     apiKey: "pm_live_12345678901234567890123456789012",
@@ -75,6 +82,71 @@ test("deployMcp uses the hosted MCP deploy route and normalizes response", async
   assert.equal(result.mcpId, "mcp_123");
   assert.equal(result.hostedUrl, "https://api.preman.live/h/mcp_123/mcp");
   assert.equal(result.dashboardUrl, "https://app.preman.live/hosted-mcps/mcp_123");
+});
+
+test("getCapabilities falls back when API route is missing", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => new Response("not found", { status: 404 }),
+  });
+  const caps = await client.getCapabilities();
+  assert.equal(caps.upstreamHosting.supported, false);
+  assert.deepEqual(caps.upstreamHosting.modes, ["external"]);
+});
+
+test("getCapabilities normalizes preman upstream hosting", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url) => {
+      assert.equal(String(url), "https://api.preman.live/capabilities");
+      return jsonResponse({
+        upstream_hosting: {
+          supported: true,
+          modes: ["external", "preman"],
+          default_mode: "preman",
+          supports_dockerfile_build: true,
+        },
+      });
+    },
+  });
+  const caps = await client.getCapabilities();
+  assert.equal(caps.upstreamHosting.supported, true);
+  assert.equal(caps.upstreamHosting.defaultMode, "preman");
+});
+
+test("deployMcp sends preman upstream hosting fields", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        hosted_mcp: { id: "mcp_123", name: "Spotify MCP", upstream_mode: "preman" },
+        hosted_mcp_url: "https://api.preman.live/h/mcp_123/mcp",
+        tool_count: 5,
+        upstream_mode: "preman",
+        upstream_hosting: {
+          upstream_mode: "preman",
+          status: "building",
+          build_id: "build_1",
+        },
+      });
+    },
+  });
+
+  const result = await client.deployMcp({
+    name: "Spotify MCP",
+    upstreamMode: "preman",
+    upstreamBuild: { dockerfile: "Dockerfile" },
+    endpoints: [{ method: "POST", path: "/tools/playback" }],
+  });
+
+  const body = JSON.parse(calls[0].init.body);
+  assert.equal(body.upstream_mode, "preman");
+  assert.equal(body.upstream_build.dockerfile, "Dockerfile");
+  assert.equal(body.upstream_base_url, undefined);
+  assert.equal(result.upstreamMode, "preman");
+  assert.equal(result.upstreamHosting?.status, "building");
 });
 
 test("importFromDocs creates a hosted MCP from a docs URL", async () => {
@@ -435,7 +507,7 @@ test("audit posts custom events and normalizes response", async () => {
   });
 });
 
-test("client accepts PREMAN_API_KEY from the environment", async () => {
+test("client defaults to PreMan API and app URLs", async () => {
   const previous = process.env.PREMAN_API_KEY;
   process.env.PREMAN_API_KEY = "pm_live_12345678901234567890123456789012";
   try {
@@ -443,6 +515,7 @@ test("client accepts PREMAN_API_KEY from the environment", async () => {
       fetchImpl: async () => jsonResponse({ id: "session_123", endpoint_count: 0 }),
     });
     assert.equal(client.apiUrl, "https://api.preman.live");
+    assert.equal(client.appUrl, "https://app.preman.live");
   } finally {
     if (previous === undefined) {
       delete process.env.PREMAN_API_KEY;
@@ -521,4 +594,94 @@ test("token list revoke and rotate use hosted MCP token lifecycle endpoints", as
   assert.equal(rotated.revoked.tokenId, "token_old");
   assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/mcp_123/tokens?include_revoked=true");
   assert.equal(calls[2].init.method, "DELETE");
+});
+
+test("deployMcp forwards upstream OAuth provider config", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        hosted_mcp: { id: "mcp_spotify", name: "Spotify MCP" },
+        hosted_mcp_url: "https://api.preman.live/h/mcp_spotify/mcp",
+        tool_count: 5,
+      });
+    },
+  });
+
+  await client.deployMcp({
+    sessionId: "session_123",
+    name: "Spotify MCP",
+    upstreamBaseUrl: "https://upstream.example.com",
+    accessMode: "token",
+    upstreamOAuthProvider: {
+      provider: "spotify",
+      authorizationEndpoint: "https://accounts.spotify.com/authorize",
+      tokenEndpoint: "https://accounts.spotify.com/api/token",
+      scopes: "user-read-playback-state",
+      clientId: "client_abc",
+      clientSecret: "secret_xyz",
+    },
+    endpoints: [{ method: "POST", path: "/tools/playback" }],
+  });
+
+  const body = JSON.parse(calls[0].init.body);
+  assert.deepEqual(body.upstream_oauth_provider, {
+    provider: "spotify",
+    authorization_endpoint: "https://accounts.spotify.com/authorize",
+    token_endpoint: "https://accounts.spotify.com/api/token",
+    scopes: "user-read-playback-state",
+    client_id: "client_abc",
+    client_secret: "secret_xyz",
+  });
+  assert.equal(body.access_mode, "token");
+});
+
+test("startUpstreamOAuth uses owner control-plane route", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        authorization_url: "https://accounts.spotify.com/authorize?state=abc",
+        state: "abc",
+        expires_at: "2026-01-01T00:00:00+00:00",
+        provider: "spotify",
+        instructions: "Open the URL",
+      });
+    },
+  });
+
+  const result = await client.startUpstreamOAuth({ mcpId: "mcp_spotify" });
+  assert.equal(calls[0].url, "https://api.preman.live/hosted-mcps/mcp_spotify/upstream-oauth/start");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(result.authorizationUrl, "https://accounts.spotify.com/authorize?state=abc");
+});
+
+test("startConsumerUpstreamOAuth uses consumer bearer against runtime route", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        authorization_url: "https://accounts.spotify.com/authorize?state=consumer",
+        state: "consumer",
+        expires_at: "2026-01-01T00:00:00+00:00",
+        provider: "spotify",
+        instructions: "Open the URL",
+      });
+    },
+  });
+
+  const result = await client.startConsumerUpstreamOAuth({
+    mcpId: "mcp_spotify",
+    consumerToken: "pm_hmcp_consumer_token_example",
+  });
+
+  assert.equal(calls[0].url, "https://api.preman.live/h/mcp_spotify/upstream-oauth/start");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer pm_hmcp_consumer_token_example");
+  assert.equal(result.state, "consumer");
 });
