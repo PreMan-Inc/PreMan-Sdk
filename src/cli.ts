@@ -16,7 +16,12 @@ import { resolveSecret, secretFromEnv } from "./secrets.js";
 import { runLocalStdioTunnel } from "./tunnel.js";
 import { generateEndpointTypes, generateHostedMcpToolTypes } from "./typegen.js";
 import { isLocalUpstreamUrl, localUpstreamMessage } from "./upstream.js";
-import type { EndpointDefinition } from "./types.js";
+import {
+  UPSTREAM_MODE_EXTERNAL,
+  UPSTREAM_MODE_PREMAN,
+  validateUpstreamDeployRequest,
+} from "./upstream-hosting.js";
+import type { EndpointDefinition, UpstreamBuildConfig } from "./types.js";
 
 type Command =
   | "init"
@@ -29,6 +34,8 @@ type Command =
   | "token"
   | "tokens"
   | "status"
+  | "capabilities"
+  | "upstream-hosting"
   | "import"
   | "apply"
   | "install-snippet"
@@ -36,7 +43,7 @@ type Command =
   | "diff"
   | "typegen"
   | "help";
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 async function main(): Promise<void> {
   const [, , rawCommand = "help", ...args] = process.argv;
@@ -67,11 +74,32 @@ async function main(): Promise<void> {
   }));
 
   if (command === "status") {
+    const capabilities = await client.getCapabilities();
     console.log(JSON.stringify({
       apiUrl: client.apiUrl,
       appUrl: client.appUrl,
       dashboardUrl: client.dashboardUrl(),
+      capabilities,
     }, null, 2));
+    return;
+  }
+
+  if (command === "capabilities") {
+    console.log(JSON.stringify(await client.getCapabilities(), null, 2));
+    return;
+  }
+
+  if (command === "upstream-hosting") {
+    const mcpId = requiredValue(args, "--mcp-id", "upstream-hosting requires --mcp-id mcp_...");
+    if (hasFlag(args, "--wait")) {
+      console.log(JSON.stringify(await client.waitForUpstreamHosting({
+        mcpId,
+        pollIntervalMs: numberFor(args, "--poll-ms"),
+        timeoutMs: numberFor(args, "--timeout-ms"),
+      }), null, 2));
+      return;
+    }
+    console.log(JSON.stringify(await client.getUpstreamHostingStatus({ mcpId }), null, 2));
     return;
   }
 
@@ -90,21 +118,40 @@ async function main(): Promise<void> {
 
   if (command === "deploy") {
     const name = valueFor(args, "--name") ?? "Generated MCP";
-    const upstreamBaseUrl = requiredValue(args, "--upstream", "deploy requires --upstream https://api.example.com");
-    if (isLocalUpstreamUrl(upstreamBaseUrl) && !hasFlag(args, "--allow-local")) {
-      throw new Error(localUpstreamMessage(upstreamBaseUrl));
+    const upstreamMode = upstreamModeFor(args);
+    const upstreamBaseUrl = valueFor(args, "--upstream");
+    const upstreamBuild = upstreamBuildFor(args);
+    if (upstreamMode === UPSTREAM_MODE_EXTERNAL) {
+      if (!upstreamBaseUrl) throw new Error("deploy requires --upstream https://api.example.com when --upstream-mode is external");
+      if (isLocalUpstreamUrl(upstreamBaseUrl) && !hasFlag(args, "--allow-local")) {
+        throw new Error(localUpstreamMessage(upstreamBaseUrl));
+      }
     }
     const endpoints = await endpointsFromRequiredFile(args, "deploy");
-    const result = await client.deployMcp(omitUndefined({
+    const deployRequest = omitUndefined({
       name,
+      upstreamMode,
       upstreamBaseUrl,
+      upstreamBuild,
       sessionId: valueFor(args, "--session-id"),
       endpoints,
       initialUpstreamSecret: await upstreamSecretFor(args),
       initialUpstreamSecretType: valueFor(args, "--upstream-secret-type") as "bearer" | "api_key" | "basic" | "custom" | undefined,
       initialConsumerLabel: valueFor(args, "--consumer-label") ?? "default-consumer",
+      accessMode: accessModeFor(args),
       request: { idempotencyKey: valueFor(args, "--idempotency-key") },
-    }));
+    });
+    validateUpstreamDeployRequest(deployRequest);
+    const result = await client.deployMcp(deployRequest);
+    if (hasFlag(args, "--wait-upstream") && result.upstreamMode === UPSTREAM_MODE_PREMAN) {
+      const hosting = await client.waitForUpstreamHosting({
+        mcpId: result.mcpId,
+        pollIntervalMs: numberFor(args, "--poll-ms"),
+        timeoutMs: numberFor(args, "--timeout-ms"),
+      });
+      console.log(JSON.stringify({ ...result, upstreamHosting: hosting }, null, 2));
+      return;
+    }
     console.log(JSON.stringify(result, null, 2));
     return;
   }
@@ -381,15 +428,20 @@ async function handleApplyCommand(args: string[], client: PremanClient): Promise
     console.log(JSON.stringify({ plan, session }, null, 2));
     return;
   }
-  if (isLocalUpstreamUrl(manifest.upstream) && !hasFlag(args, "--allow-local")) throw new Error(localUpstreamMessage(manifest.upstream));
-  const deploy = await client.deployMcp({
+  const upstreamMode = manifest.upstreamMode ?? (manifest.deploy?.preferPremanHosting ? UPSTREAM_MODE_PREMAN : UPSTREAM_MODE_EXTERNAL);
+  if (upstreamMode === UPSTREAM_MODE_EXTERNAL && manifest.upstream && isLocalUpstreamUrl(manifest.upstream) && !hasFlag(args, "--allow-local")) {
+    throw new Error(localUpstreamMessage(manifest.upstream));
+  }
+  const deploy = await client.deployMcp(omitUndefined({
     sessionId: session.sessionId,
     name: manifest.deploy?.name ?? manifest.name ?? "Manifest MCP",
+    upstreamMode,
     upstreamBaseUrl: manifest.upstream,
+    upstreamBuild: manifest.upstreamBuild,
     endpoints: manifest.endpoints,
     initialConsumerLabel: manifest.deploy?.initialConsumerLabel ?? "default-consumer",
     request: { idempotencyKey: valueFor(args, "--idempotency-key") },
-  });
+  }));
   console.log(JSON.stringify({ plan, session, deploy }, null, 2));
 }
 
@@ -558,6 +610,31 @@ function upstreamAuthStyleFor(args: string[]): { type?: "header" | "query" | "ba
   return Object.keys(style).length ? style : undefined;
 }
 
+function upstreamModeFor(args: string[]): "external" | "preman" {
+  const value = valueFor(args, "--upstream-mode");
+  if (!value) return UPSTREAM_MODE_EXTERNAL;
+  if (value === UPSTREAM_MODE_EXTERNAL || value === UPSTREAM_MODE_PREMAN) return value;
+  throw new Error("--upstream-mode must be external or preman");
+}
+
+function upstreamBuildFor(args: string[]): UpstreamBuildConfig | undefined {
+  const image = valueFor(args, "--image");
+  const dockerfile = valueFor(args, "--dockerfile");
+  const buildContextUrl = valueFor(args, "--build-context-url");
+  const contextPath = valueFor(args, "--context-path");
+  const healthPath = valueFor(args, "--health-path");
+  const port = numberFor(args, "--port");
+  if (!image && !dockerfile && !buildContextUrl) return undefined;
+  return omitUndefined({
+    image,
+    dockerfile,
+    buildContextUrl,
+    contextPath,
+    healthPath,
+    port,
+  });
+}
+
 function printHelp(): void {
   console.log(`PreMan SDK CLI
 
@@ -565,6 +642,9 @@ Usage:
   npx preman-sdk init --api-key pm_live_...
   npx preman-sdk register --file endpoints.json --upstream https://api.example.com --intent "Auth endpoints"
   npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.example.com
+  npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream-mode preman --dockerfile Dockerfile
+  npx preman-sdk capabilities
+  npx preman-sdk upstream-hosting --mcp-id mcp_123 --wait
   npx preman-sdk import-docs --url https://docs.example.com/api --name "Public API MCP"
   npx preman-sdk import-remote-mcp --url https://remote-mcp.example.com/mcp --name "Remote MCP Proxy"
   npx preman-sdk tunnel --name "Local Files MCP" --command npx --arg -y --arg @modelcontextprotocol/server-filesystem --arg .
@@ -591,9 +671,19 @@ Global install:
 Options:
   --api-url                 Override API URL (default: https://api.preman.live)
   --app-url                 Override app URL (default: https://app.preman.live)
-  --upstream                Your real API base URL. Example: https://api.company.com
+  --upstream                External API base URL (required for --upstream-mode external)
+  --upstream-mode           external (default) or preman (PreMan hosts the upstream API)
+  --image                   OCI image for --upstream-mode preman
+  --dockerfile              Dockerfile path for --upstream-mode preman (default Dockerfile)
+  --build-context-url       Remote build context tarball URL for preman upstream hosting
+  --context-path            Build context directory path metadata for preman upstream hosting
+  --health-path             Health check path for preman upstream (default /health)
+  --port                    Container port for preman upstream (default 8000)
+  --wait-upstream           After deploy, wait until preman upstream hosting is running
+  --poll-ms                 Poll interval for --wait-upstream / upstream-hosting --wait
+  --timeout-ms              Timeout for --wait-upstream / upstream-hosting --wait
   --allow-local             Allow localhost/private upstreams for local-only previews
-  --session-id              Reuse a PreMan playground session id
+  --session-id              Reuse a playground session id
   --upstream-secret         Upstream API secret stored with a hosted MCP deploy
   --upstream-secret-env     Read upstream API secret from an environment variable
   --upstream-secret-type    bearer, api_key, basic, or custom
@@ -619,15 +709,19 @@ Options:
   --version                 Print CLI version
 
 Auth:
-  The CLI uses your PreMan workspace API key, currently formatted as pm_live_...
+  The CLI uses your PreMan workspace API key, formatted as pm_live_...
   Create one at https://app.preman.live/settings.
   You can save it with init or set PREMAN_API_KEY.
 
 Upstream:
-  PreMan combines --upstream with each endpoint path.
+  PreMan combines --upstream with each endpoint path when upstream-mode is external.
   Example: --upstream https://api.company.com + /auth/login = https://api.company.com/auth/login
   Do not use a marketing site unless that site is also your API.
   localhost only works for local testing; hosted MCPs need a deployed or tunneled API URL.
+
+  For PreMan-hosted upstream APIs, run "preman capabilities" first. When upstream_mode
+  preman is supported, deploy with --upstream-mode preman and --dockerfile or --image.
+  Agents can import AGENT_UPSTREAM_HOSTING_GUIDE from preman-sdk/upstream-hosting.
 
 The CLI is the on-ramp. Use the hosted workspace at https://app.preman.live
 to see customer tokens, revoke access, inspect audit logs, and review agent activity.

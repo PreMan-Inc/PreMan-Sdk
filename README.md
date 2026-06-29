@@ -35,6 +35,7 @@ You can also skip `init` and set an environment variable:
 
 ```bash
 export PREMAN_API_KEY=pm_live_your_key
+# PREMAN_API_KEY also works for compatibility with the PreMan MCP.
 ```
 
 ## Quick Start
@@ -60,7 +61,7 @@ Create `endpoints.json`:
 ]
 ```
 
-Register the endpoints into a PreMan playground session:
+Register the endpoints into a playground session:
 
 ```bash
 npx preman-sdk register --file endpoints.json --upstream https://api.company.com
@@ -251,6 +252,61 @@ await runLocalStdioTunnel(preman, {
 });
 ```
 
+## Upstream hosting modes
+
+PreMan hosted MCPs use two URLs:
+
+- **hostedUrl** — MCP endpoint for agents (`/h/{id}/mcp`)
+- **upstream** — HTTP API that implements your tool endpoints
+
+### External upstream (default)
+
+You host the API and pass `upstreamBaseUrl` (CLI `--upstream`). PreMan proxies tool calls there.
+
+### PreMan-hosted upstream (`upstreamMode: "preman"`)
+
+PreMan builds and runs your upstream container. Discover support first, then deploy without a tunnel:
+
+```ts
+import { PremanClient } from "preman-sdk";
+import {
+  resolveUpstreamDeployPlan,
+  supportsPremanUpstreamHosting,
+} from "preman-sdk/upstream-hosting";
+
+const preman = new PremanClient();
+const capabilities = await preman.getCapabilities();
+
+if (supportsPremanUpstreamHosting(capabilities)) {
+  const plan = resolveUpstreamDeployPlan({
+    capabilities,
+    preferPremanHosting: true,
+    upstreamBuild: { dockerfile: "Dockerfile", healthPath: "/health" },
+  });
+
+  const deployed = await preman.deployMcp({
+    name: "Spotify MCP",
+    upstreamMode: plan.upstreamMode,
+    upstreamBuild: plan.upstreamBuild,
+    endpoints,
+  });
+
+  await preman.waitForUpstreamHosting({ mcpId: deployed.mcpId });
+}
+```
+
+**Agent discovery:** import `AGENT_UPSTREAM_HOSTING_GUIDE` from `preman-sdk/upstream-hosting`, or run `npx preman-sdk capabilities`.
+
+**CLI:**
+
+```bash
+npx preman-sdk capabilities
+npx preman-sdk deploy --name "Spotify MCP" --file endpoints.json \
+  --upstream-mode preman --dockerfile Dockerfile --wait-upstream
+npx preman-sdk upstream-hosting --mcp-id mcp_123 --wait
+```
+
+`GET /capabilities` returns `upstream_hosting` when the API supports PreMan-hosted upstreams. Older APIs return only external mode (SDK falls back safely).
 ## Token Scoping
 
 PreMan consumer tokens are scoped to a hosted MCP. The hosted MCP runtime verifies the token before forwarding a tool call to your upstream API.
@@ -520,7 +576,7 @@ PREMAN_APP_URL=https://app.preman.live
 
 Working today:
 
-- `registerEndpoints()` -> creates or updates a PreMan playground session
+- `registerEndpoints()` -> creates or updates a playground session
 - `deployMcp()` -> creates a hosted MCP from endpoint definitions
 - `createToken()` -> mints a scoped hosted MCP consumer token
 - `listTokens()` / `revokeToken()` / `rotateToken()` -> manage hosted MCP token lifecycle
