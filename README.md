@@ -616,9 +616,9 @@ PREMAN_TEST_OPENAPI_URL=https://petstore3.swagger.io/api/v3/openapi.json
 PREMAN_TEST_REMOTE_MCP_URL=https://mcp.example.com/mcp
 ```
 
-## Privacy
+## Legal
 
-PreMan processes account, workspace, and runtime data as described in our [Privacy Policy](https://preman.live/privacy).
+Use of PreMan is governed by our [Terms of Service](https://preman.live/terms). We process account, workspace, and runtime data as described in our [Privacy Policy](https://preman.live/privacy).
 
 ## License
 
