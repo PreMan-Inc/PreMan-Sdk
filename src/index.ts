@@ -56,6 +56,18 @@ export {
   appRuntimeUrl,
   normalizeDiscoveredCapability,
 } from "./apps.js";
+export {
+  AGENT_WORKFLOWS_GUIDE,
+  PREMAN_CALL_TOOL_PATH,
+  PREMAN_PLATFORM_SKILL_URL,
+  PREMAN_SKILL_SETUP_COMMAND,
+  createPremanAgentTools,
+  createPremanToolHandlerMap,
+  listPlatformToolSpecs,
+  toAnthropicTools,
+  toOpenAITools,
+} from "./platform-tools.js";
+export type { CreatePremanAgentToolsOptions, PremanAgentTool } from "./platform-tools.js";
 export type {
   AddAppMemberRequest,
   AddAppMemberResponse,
@@ -68,6 +80,8 @@ export type {
   AuditEvent,
   AuditLogResponse,
   CapabilityKind,
+  CallPlatformToolRequest,
+  CallPlatformToolResponse,
   CreateAppRequest,
   CreateAppResponse,
   CreateLocalStdioTunnelRequest,

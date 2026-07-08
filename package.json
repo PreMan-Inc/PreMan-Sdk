@@ -52,6 +52,10 @@
     "./apps": {
       "types": "./dist/apps.d.ts",
       "import": "./dist/apps.js"
+    },
+    "./platform-tools": {
+      "types": "./dist/platform-tools.d.ts",
+      "import": "./dist/platform-tools.js"
     }
   },
   "main": "./dist/index.js",

@@ -788,3 +788,15 @@ export type MintAppTokenResponse = {
   llmsTxtUrl: string;
   raw?: Record<string, unknown>;
 };
+
+export type CallPlatformToolRequest = {
+  tool: string;
+  arguments?: Record<string, unknown>;
+  request?: RequestOptions;
+};
+
+export type CallPlatformToolResponse = {
+  tool: string;
+  result: unknown;
+  raw?: unknown;
+};

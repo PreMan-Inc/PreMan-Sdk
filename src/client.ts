@@ -6,6 +6,8 @@ import {
   type AppSetupStatus,
   type AuditEvent,
   type AuditLogResponse,
+  type CallPlatformToolRequest,
+  type CallPlatformToolResponse,
   type CreateAppRequest,
   type CreateAppResponse,
   type DiscoverCapabilitiesRequest,
@@ -764,6 +766,27 @@ export class PremanClient {
     };
   }
 
+  /**
+   * Invoke any PreMan platform tool over HTTP (same surface as preman-mcp and skill.md).
+   * Use createPremanAgentTools() when building LangChain or other agentic workflows.
+   */
+  async callPlatformTool(request: CallPlatformToolRequest): Promise<CallPlatformToolResponse> {
+    requireString(request.tool, "tool");
+    const result = await this.request<unknown>("/mcp/call-tool", {
+      method: "POST",
+      body: {
+        tool: request.tool,
+        arguments: request.arguments ?? {},
+      },
+      request: request.request,
+    });
+    return {
+      tool: request.tool,
+      result: normalizePlatformToolResult(result),
+      raw: result,
+    };
+  }
+
   dashboardUrl(path = "/dashboard"): string {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     return `${this.appUrl}${normalizedPath}`;
@@ -1153,6 +1176,17 @@ function objectOrNullAt(value: Record<string, unknown>, key: string): Record<str
 function objectOrUndefinedAt(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   const item = objectAt(value, key);
   return Object.keys(item).length ? item : undefined;
+}
+
+function normalizePlatformToolResult(raw: unknown): unknown {
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
 }
 
 function normalizeAppRecord(value: Record<string, unknown>): PremanAppRecord {

@@ -33,6 +33,7 @@ type Command =
   | "hosted-mcps"
   | "apps"
   | "discover"
+  | "call-tool"
   | "token"
   | "tokens"
   | "status"
@@ -216,6 +217,19 @@ async function main(): Promise<void> {
     const query = requiredValue(args, "--query", "discover requires --query \"find concerts\"");
     const limit = Number(valueFor(args, "--limit") ?? "10");
     console.log(JSON.stringify(await client.discoverCapabilities({ query, limit }), null, 2));
+    return;
+  }
+
+  if (command === "call-tool") {
+    const tool = requiredValue(args, "--tool", "call-tool requires --tool preman_discover_capabilities");
+    const argsJson = valueFor(args, "--args") ?? valueFor(args, "--arguments") ?? "{}";
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(argsJson) as Record<string, unknown>;
+    } catch {
+      throw new Error("call-tool --args must be valid JSON");
+    }
+    console.log(JSON.stringify(await client.callPlatformTool({ tool, arguments: parsed }), null, 2));
     return;
   }
 
@@ -715,6 +729,7 @@ Usage:
   npx preman-sdk apps templates
   npx preman-sdk apps create --name "My Concerts" --template-key concerts_finder_v1
   npx preman-sdk discover --query "plan a hike"
+  npx preman-sdk call-tool --tool preman_discover_capabilities --args '{"query":"find concerts"}'
   npx preman-sdk apps --slug my-app
   npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
   npx preman-sdk token list --mcp-id mcp_123
