@@ -48,6 +48,10 @@
     "./llms": {
       "types": "./dist/llms.d.ts",
       "import": "./dist/llms.js"
+    },
+    "./apps": {
+      "types": "./dist/apps.d.ts",
+      "import": "./dist/apps.js"
     }
   },
   "main": "./dist/index.js",

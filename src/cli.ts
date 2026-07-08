@@ -31,6 +31,8 @@ type Command =
   | "import-remote-mcp"
   | "tunnel"
   | "hosted-mcps"
+  | "apps"
+  | "discover"
   | "token"
   | "tokens"
   | "status"
@@ -205,6 +207,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "apps") {
+    await handleAppsCommand(args, client);
+    return;
+  }
+
+  if (command === "discover") {
+    const query = requiredValue(args, "--query", "discover requires --query \"find concerts\"");
+    const limit = Number(valueFor(args, "--limit") ?? "10");
+    console.log(JSON.stringify(await client.discoverCapabilities({ query, limit }), null, 2));
+    return;
+  }
+
   if (command === "token") {
     await handleTokenCommand(args, client);
     return;
@@ -260,6 +274,53 @@ async function main(): Promise<void> {
   }
 
   throw new Error(`Unknown command: ${command}`);
+}
+
+async function handleAppsCommand(args: string[], client: PremanClient): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (sub === "templates" || hasFlag(args, "--templates")) {
+    console.log(JSON.stringify(await client.listAppTemplates(), null, 2));
+    return;
+  }
+
+  if (sub === "create") {
+    const name = requiredValue(rest, "--name", "apps create requires --name");
+    const slug = valueFor(rest, "--slug");
+    const templateKey = valueFor(rest, "--template-key") ?? valueFor(rest, "--template");
+    console.log(JSON.stringify(await client.createApp({
+      name,
+      slug,
+      templateKey,
+    }), null, 2));
+    return;
+  }
+
+  const slug = valueFor(rest, "--slug") ?? valueFor(args, "--slug");
+  const profileId = valueFor(rest, "--profile-id") ?? valueFor(args, "--profile-id");
+
+  if (sub === "mint-token" && profileId) {
+    console.log(JSON.stringify(await client.mintAppToken({ profileId }), null, 2));
+    return;
+  }
+
+  if (sub === "setup-status" && slug) {
+    console.log(JSON.stringify(await client.getAppSetupStatus(slug), null, 2));
+    return;
+  }
+
+  if (slug) {
+    console.log(JSON.stringify(await client.getApp(slug), null, 2));
+    return;
+  }
+
+  if (profileId) {
+    console.log(JSON.stringify(await client.getAppProfile(profileId), null, 2));
+    return;
+  }
+
+  console.log(JSON.stringify(await client.listApps(), null, 2));
 }
 
 async function handleSnapshotCommand(args: string[], client: PremanClient): Promise<void> {
@@ -650,6 +711,11 @@ Usage:
   npx preman-sdk tunnel --name "Local Files MCP" --command npx --arg -y --arg @modelcontextprotocol/server-filesystem --arg .
   npx preman-sdk hosted-mcps
   npx preman-sdk hosted-mcps --id mcp_123
+  npx preman-sdk apps
+  npx preman-sdk apps templates
+  npx preman-sdk apps create --name "My Concerts" --template-key concerts_finder_v1
+  npx preman-sdk discover --query "plan a hike"
+  npx preman-sdk apps --slug my-app
   npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
   npx preman-sdk token list --mcp-id mcp_123
   npx preman-sdk token revoke --mcp-id mcp_123 --token-id token_123

@@ -60,6 +60,16 @@ _Avoid_: MCP proxy (jargon), wrap
 A Hosted MCP record whose runtime forwards JSON-RPC to a local STDIO MCP process via a connector.
 _Avoid_: Tunnel MCP
 
+## Apps
+
+**App**:
+A governed bundle of MCP members plus guideline pack and setup playbook, exposed at `POST /m/{slug}/mcp`. SDK methods: `discoverCapabilities`, `createApp`, `addAppMember`, `mintAppToken`. Agent guide: `preman-sdk/apps` (`AGENT_APPS_GUIDE`).
+_Avoid_: Connector, profile (in user-facing copy)
+
+**App template**:
+Curated starter (`hike_planner_v1`, `concerts_finder_v1`, `ecommerce_v1`) that seeds default llms.txt and playbook.
+_Avoid_: Hosted MCP template
+
 ## Documentation
 
 **MCP llms.txt**:
@@ -72,8 +82,8 @@ _Avoid_: Doc state, llms state
 
 ## What is not an "App"
 
-**App** is not a domain term in this SDK. Use **Hosted MCP** for gateways and **PreMan-hosted upstream** for operator containers PreMan runs. The hostname app.preman.live refers to the **Hosted workspace**, not a deployable App entity.
-_Avoid_: Using "app" interchangeably with Hosted MCP
+**App** is a first-class domain term for governed MCP bundles (see PreMan-Backend `CONTEXT.md`). Use **Hosted MCP** for single-API gateways. The hostname app.preman.live refers to the **Hosted workspace**, not an App entity.
+_Avoid_: Using "app" interchangeably with Hosted MCP or the workspace URL
 
 ## Implementation notes
 

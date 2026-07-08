@@ -1,6 +1,26 @@
 import {
+  type AddAppMemberRequest,
+  type AddAppMemberResponse,
+  type AppInstallSnippet,
+  type AppPlaybookStep,
+  type AppSetupStatus,
   type AuditEvent,
   type AuditLogResponse,
+  type CreateAppRequest,
+  type CreateAppResponse,
+  type DiscoverCapabilitiesRequest,
+  type DiscoverCapabilitiesResponse,
+  type GetAppResponse,
+  type ImportMcpServerRequest,
+  type ImportMcpServerResponse,
+  type ListAppsResponse,
+  type ListAppTemplatesResponse,
+  type MintAppTokenRequest,
+  type MintAppTokenResponse,
+  type PremanAppMember,
+  type PremanAppRecord,
+  type PremanAppTemplate,
+  type UpdateAppRequest,
   type CreateTokenRequest,
   type CreateTokenResponse,
   type DeployMcpRequest,
@@ -46,6 +66,12 @@ import {
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
 import { normalizeHostedMcpCatalog } from "./catalog.js";
+import {
+  appDashboardUrl,
+  appLlmsTxtUrl,
+  appRuntimeUrl,
+  normalizeDiscoveredCapability,
+} from "./apps.js";
 import {
   PREMAN_CAPABILITIES_PATH,
   buildUpstreamDeployBody,
@@ -533,6 +559,211 @@ export class PremanClient {
     };
   }
 
+  async discoverCapabilities(request: DiscoverCapabilitiesRequest): Promise<DiscoverCapabilitiesResponse> {
+    requireString(request.query, "query");
+    const params = new URLSearchParams({
+      q: request.query.trim(),
+      limit: String(request.limit ?? 10),
+    });
+    const response = await this.request<Record<string, unknown>>(`/capabilities/search?${params}`, {
+      method: "GET",
+      request: request.request,
+    });
+    const rawMatches = arrayOfObjectsAt(response, "results").length
+      ? arrayOfObjectsAt(response, "results")
+      : arrayOfObjectsAt(response, "matches");
+    return {
+      query: stringAt(response, "query") || request.query,
+      matches: rawMatches.map((match) => normalizeDiscoveredCapability(match)),
+      total: numberAt(response, "total") || rawMatches.length,
+      raw: response,
+    };
+  }
+
+  async listApps(request: RequestOptions = {}): Promise<ListAppsResponse> {
+    const response = await this.request<Record<string, unknown>>("/apps", {
+      method: "GET",
+      request,
+    });
+    const apps = arrayOfObjectsAt(response, "apps").map(normalizeAppRecord);
+    return {
+      apps,
+      total: numberAt(response, "total") || apps.length,
+      raw: response,
+    };
+  }
+
+  async listAppTemplates(request: RequestOptions = {}): Promise<ListAppTemplatesResponse> {
+    const response = await this.request<Record<string, unknown>>("/apps/templates", {
+      method: "GET",
+      request,
+    });
+    const templates = arrayOfObjectsAt(response, "templates") as PremanAppTemplate[];
+    return {
+      templates,
+      total: numberAt(response, "total") || templates.length,
+      raw: response,
+    };
+  }
+
+  async getApp(slug: string, request: RequestOptions = {}): Promise<GetAppResponse> {
+    requireString(slug, "slug");
+    const response = await this.request<Record<string, unknown>>(`/apps/${encodeURIComponent(slug)}`, {
+      method: "GET",
+      request,
+    });
+    return {
+      app: normalizeAppRecord(objectAt(response, "app")),
+      raw: response,
+    };
+  }
+
+  async getAppProfile(profileId: string, request: RequestOptions = {}): Promise<GetAppResponse> {
+    requireString(profileId, "profileId");
+    const response = await this.request<Record<string, unknown>>(
+      `/managed-mcps/profiles/${encodeURIComponent(profileId)}`,
+      { method: "GET", request },
+    );
+    return {
+      app: normalizeAppRecord(objectAt(response, "profile")),
+      raw: response,
+    };
+  }
+
+  async getAppSetupStatus(slug: string, request: RequestOptions = {}): Promise<AppSetupStatus> {
+    requireString(slug, "slug");
+    const response = await this.request<Record<string, unknown>>(
+      `/apps/${encodeURIComponent(slug)}/setup-status`,
+      { method: "GET", request },
+    );
+    return normalizeAppSetupStatus(objectAt(response, "setup_status"));
+  }
+
+  async createApp(request: CreateAppRequest): Promise<CreateAppResponse> {
+    requireString(request.name, "name");
+    const response = await this.request<Record<string, unknown>>("/managed-mcps/profiles", {
+      method: "POST",
+      body: omitUndefined({
+        name: request.name,
+        slug: request.slug,
+        template_key: request.templateKey ?? request.template_key,
+        members: (request.members ?? []).map(toBackendAppMember),
+        access_mode: request.accessMode ?? request.access_mode,
+        llms_txt_markdown: request.llmsTxtMarkdown ?? request.llms_txt_markdown,
+        setup_playbook_json: request.setupPlaybookJson ?? request.setup_playbook_json,
+        branding: request.branding,
+        mint_consumer_token: request.mintConsumerToken ?? request.mint_consumer_token ?? true,
+        consumer_label: request.consumerLabel ?? request.consumer_label ?? "default",
+      }),
+      request: request.request,
+    });
+    const profile = normalizeAppRecord(objectAt(response, "profile"));
+    const slug = profile.slug;
+    return {
+      profile,
+      consumerToken: objectOrUndefinedAt(response, "consumer_token"),
+      rawToken: nullableStringAt(response, "raw_token"),
+      installSnippet: normalizeAppInstallSnippet(objectAt(response, "install_snippet"), slug, this.apiUrl),
+      dashboardUrl: appDashboardUrl(this.appUrl, profile.id),
+      runtimeUrl: appRuntimeUrl(this.apiUrl, slug),
+      llmsTxtUrl: appLlmsTxtUrl(this.apiUrl, slug),
+      raw: response,
+    };
+  }
+
+  async updateApp(request: UpdateAppRequest): Promise<GetAppResponse> {
+    requireString(request.slug, "slug");
+    const response = await this.request<Record<string, unknown>>(
+      `/apps/${encodeURIComponent(request.slug)}`,
+      {
+        method: "PATCH",
+        body: omitUndefined({
+          name: request.name,
+          status: request.status,
+          llms_txt_markdown: request.llmsTxtMarkdown ?? request.llms_txt_markdown,
+          setup_playbook_json: request.setupPlaybookJson ?? request.setup_playbook_json,
+          branding: request.branding,
+          access_mode: request.accessMode ?? request.access_mode,
+          template_key: request.templateKey ?? request.template_key,
+        }),
+        request: request.request,
+      },
+    );
+    return {
+      app: normalizeAppRecord(objectAt(response, "app")),
+      raw: response,
+    };
+  }
+
+  async deleteApp(slug: string, request: RequestOptions = {}): Promise<{ ok: boolean }> {
+    requireString(slug, "slug");
+    const response = await this.request<Record<string, unknown>>(
+      `/apps/${encodeURIComponent(slug)}`,
+      { method: "DELETE", request },
+    );
+    return { ok: response["ok"] === true };
+  }
+
+  async importMcpServer(request: ImportMcpServerRequest): Promise<ImportMcpServerResponse> {
+    const response = await this.request<Record<string, unknown>>("/managed-mcps/import", {
+      method: "POST",
+      body: omitUndefined({
+        config: request.config,
+        mcp_url: request.mcpUrl ?? request.mcp_url,
+        name: request.name,
+        initial_secret: request.initialSecret ?? request.initial_secret,
+        initial_secret_type: request.initialSecretType ?? request.initial_secret_type,
+      }),
+      request: request.request,
+    });
+    return {
+      server: objectAt(response, "server") as ImportMcpServerResponse["server"],
+      initialCredential: objectOrNullAt(response, "initial_credential"),
+      raw: response,
+    };
+  }
+
+  async addAppMember(request: AddAppMemberRequest): Promise<AddAppMemberResponse> {
+    requireString(request.profileId, "profileId");
+    requireString(request.prefix, "prefix");
+    const response = await this.request<Record<string, unknown>>(
+      `/managed-mcps/profiles/${encodeURIComponent(request.profileId)}/members`,
+      {
+        method: "POST",
+        body: omitUndefined({
+          server_id: request.serverId ?? request.server_id,
+          hosted_mcp_id: request.hostedMcpId ?? request.hosted_mcp_id,
+          prefix: request.prefix,
+          display_name: request.displayName ?? request.display_name,
+        }),
+        request: request.request,
+      },
+    );
+    return {
+      profile: normalizeAppRecord(objectAt(response, "profile")),
+      raw: response,
+    };
+  }
+
+  async mintAppToken(request: MintAppTokenRequest): Promise<MintAppTokenResponse> {
+    requireString(request.profileId, "profileId");
+    const response = await this.request<Record<string, unknown>>(
+      `/managed-mcps/profiles/${encodeURIComponent(request.profileId)}/install`,
+      { method: "GET", request: request.request },
+    );
+    const slug = stringAt(response, "slug");
+    return {
+      profileId: stringAt(response, "profile_id") || request.profileId,
+      slug,
+      consumerToken: objectOrUndefinedAt(response, "consumer_token"),
+      rawToken: nullableStringAt(response, "raw_token"),
+      installSnippet: normalizeAppInstallSnippet(objectAt(response, "install_snippet"), slug, this.apiUrl),
+      runtimeUrl: appRuntimeUrl(this.apiUrl, slug),
+      llmsTxtUrl: appLlmsTxtUrl(this.apiUrl, slug),
+      raw: response,
+    };
+  }
+
   dashboardUrl(path = "/dashboard"): string {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     return `${this.appUrl}${normalizedPath}`;
@@ -922,6 +1153,87 @@ function objectOrNullAt(value: Record<string, unknown>, key: string): Record<str
 function objectOrUndefinedAt(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   const item = objectAt(value, key);
   return Object.keys(item).length ? item : undefined;
+}
+
+function normalizeAppRecord(value: Record<string, unknown>): PremanAppRecord {
+  const members = arrayOfObjectsAt(value, "members");
+  return {
+    ...(value as PremanAppRecord),
+    id: stringAt(value, "id"),
+    name: stringAt(value, "name"),
+    slug: stringAt(value, "slug"),
+    status: (stringAt(value, "status") || "active") as PremanAppRecord["status"],
+    llmsTxtMarkdown: stringOrUndefined(value, "llms_txt_markdown") ?? stringOrUndefined(value, "llmsTxtMarkdown"),
+    setupPlaybookJson: (value["setup_playbook_json"] ?? value["setupPlaybookJson"]) as AppPlaybookStep[] | undefined,
+    templateKey: nullableStringAt(value, "template_key") ?? nullableStringAt(value, "templateKey"),
+    members: members.length ? members.map(normalizeAppMember) : undefined,
+  };
+}
+
+function normalizeAppMember(value: Record<string, unknown>) {
+  return {
+    ...(value as PremanAppMember),
+    id: stringAt(value, "id"),
+    prefix: stringAt(value, "prefix"),
+    displayName: stringOrUndefined(value, "display_name") ?? stringOrUndefined(value, "displayName"),
+    serverId: nullableStringAt(value, "server_id") ?? nullableStringAt(value, "serverId"),
+    hostedMcpId: nullableStringAt(value, "hosted_mcp_id") ?? nullableStringAt(value, "hostedMcpId"),
+  };
+}
+
+function normalizeAppSetupStatus(value: Record<string, unknown>): AppSetupStatus {
+  const members = arrayOfObjectsAt(value, "members");
+  return {
+    appSlug: stringOrUndefined(value, "app_slug") ?? stringOrUndefined(value, "appSlug"),
+    appName: stringOrUndefined(value, "app_name") ?? stringOrUndefined(value, "appName"),
+    allMembersHealthy: booleanAt(value, "all_members_healthy") || booleanAt(value, "allMembersHealthy"),
+    members: members.map((member) => ({
+      prefix: stringAt(member, "prefix"),
+      displayName: stringOrUndefined(member, "display_name") ?? stringOrUndefined(member, "displayName"),
+      healthy: member["healthy"] === true,
+      status: stringAt(member, "status") || "unknown",
+      reconnectHint: nullableStringAt(member, "reconnect_hint") ?? nullableStringAt(member, "reconnectHint"),
+      serverId: nullableStringAt(member, "server_id") ?? nullableStringAt(member, "serverId"),
+      hostedMcpId: nullableStringAt(member, "hosted_mcp_id") ?? nullableStringAt(member, "hostedMcpId"),
+    })),
+    llmsTxtUrl: stringOrUndefined(value, "llms_txt_url") ?? stringOrUndefined(value, "llmsTxtUrl"),
+    setupPlaybook: (value["setup_playbook"] ?? value["setupPlaybook"] ?? value["setup_playbook_json"]) as AppSetupStatus["setupPlaybook"],
+  };
+}
+
+function normalizeAppInstallSnippet(value: Record<string, unknown>, slug: string, apiUrl = "https://api.preman.live"): AppInstallSnippet {
+  if (!Object.keys(value).length) {
+    return {
+      url: appRuntimeUrl(apiUrl, slug),
+      llmsTxtUrl: appLlmsTxtUrl(apiUrl, slug),
+      mcp_json: {},
+      mcpJson: {},
+    };
+  }
+  const base = normalizeInstallSnippet(value);
+  const llmsTxtUrl = stringOrUndefined(value, "llms_txt_url") ?? stringOrUndefined(value, "llmsTxtUrl");
+  return {
+    ...base,
+    llmsTxtUrl: llmsTxtUrl ?? appLlmsTxtUrl(apiUrl, slug),
+  };
+}
+
+function toBackendAppMember(member: import("./types.js").AppMemberInput): Record<string, unknown> {
+  return omitUndefined({
+    server_id: member.serverId ?? member.server_id,
+    hosted_mcp_id: member.hostedMcpId ?? member.hosted_mcp_id,
+    prefix: member.prefix,
+    display_name: member.displayName ?? member.display_name,
+  });
+}
+
+function stringOrUndefined(value: Record<string, unknown>, key: string): string | undefined {
+  const item = value[key];
+  return typeof item === "string" ? item : undefined;
+}
+
+function booleanAt(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === true;
 }
 
 function omitUndefined<T extends Record<string, unknown>>(value: T): T {

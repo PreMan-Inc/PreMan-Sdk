@@ -520,3 +520,271 @@ export type PremanClientHooks = {
   onResponse?: (event: ResponseHookEvent) => void | Promise<void>;
   onError?: (event: ErrorHookEvent) => void | Promise<void>;
 };
+
+/** Access mode for App governed runtimes. */
+export type AppAccessMode = "token" | "public";
+
+export type AppPlaybookStep = {
+  memberKey?: string;
+  member_key?: string;
+  title?: string;
+  steps?: string[];
+  [key: string]: unknown;
+};
+
+export type PremanAppMember = {
+  id: string;
+  profileId?: string;
+  profile_id?: string;
+  serverId?: string | null;
+  server_id?: string | null;
+  hostedMcpId?: string | null;
+  hosted_mcp_id?: string | null;
+  prefix: string;
+  displayName?: string;
+  display_name?: string;
+  sortOrder?: number;
+  sort_order?: number;
+  createdAt?: string;
+  created_at?: string;
+};
+
+export type PremanAppRecord = {
+  id: string;
+  userId?: number;
+  user_id?: number;
+  name: string;
+  slug: string;
+  status: "active" | "paused" | "archived";
+  llmsTxtMarkdown?: string;
+  llms_txt_markdown?: string;
+  setupPlaybookJson?: AppPlaybookStep[];
+  setup_playbook_json?: AppPlaybookStep[];
+  templateKey?: string | null;
+  template_key?: string | null;
+  templateLinkedKey?: string | null;
+  template_linked_key?: string | null;
+  branding?: Record<string, unknown>;
+  accessMode?: AppAccessMode;
+  access_mode?: AppAccessMode;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  members?: PremanAppMember[];
+};
+
+export type PremanAppTemplate = {
+  key: string;
+  name: string;
+  description?: string;
+  defaultMembers?: Array<{ memberKey?: string; member_key?: string; prefix: string; title?: string }>;
+  default_members?: Array<{ member_key?: string; prefix: string; title?: string }>;
+};
+
+export type AppSetupStatusMember = {
+  prefix: string;
+  displayName?: string;
+  display_name?: string;
+  healthy: boolean;
+  status: string;
+  reconnectHint?: string | null;
+  reconnect_hint?: string | null;
+  serverId?: string | null;
+  server_id?: string | null;
+  hostedMcpId?: string | null;
+  hosted_mcp_id?: string | null;
+};
+
+export type AppSetupStatus = {
+  appSlug?: string;
+  app_slug?: string;
+  appName?: string;
+  app_name?: string;
+  allMembersHealthy?: boolean;
+  all_members_healthy?: boolean;
+  members: AppSetupStatusMember[];
+  llmsTxtUrl?: string;
+  llms_txt_url?: string;
+  setupPlaybook?: AppPlaybookStep[];
+  setup_playbook?: AppPlaybookStep[];
+};
+
+export type CapabilityKind = "app" | "template" | "hosted_mcp";
+
+export type DiscoveredCapability = {
+  kind: CapabilityKind;
+  id?: string;
+  slug?: string | null;
+  name: string;
+  summarySnippet?: string;
+  summary_snippet?: string;
+  llmsTxtUrl?: string | null;
+  llms_txt_url?: string | null;
+  runtimeUrl?: string | null;
+  runtime_url?: string | null;
+  installHint?: string;
+  install_hint?: string;
+  templateKey?: string | null;
+  template_key?: string | null;
+  accessMode?: string | null;
+  access_mode?: string | null;
+};
+
+export type DiscoverCapabilitiesRequest = {
+  query: string;
+  limit?: number;
+  request?: RequestOptions;
+};
+
+export type DiscoverCapabilitiesResponse = {
+  query: string;
+  matches: DiscoveredCapability[];
+  total: number;
+  raw?: Record<string, unknown>;
+};
+
+export type ListAppsResponse = {
+  apps: PremanAppRecord[];
+  total: number;
+  raw?: Record<string, unknown>;
+};
+
+export type ListAppTemplatesResponse = {
+  templates: PremanAppTemplate[];
+  total: number;
+  raw?: Record<string, unknown>;
+};
+
+export type AppMemberInput = {
+  serverId?: string;
+  server_id?: string;
+  hostedMcpId?: string;
+  hosted_mcp_id?: string;
+  prefix: string;
+  displayName?: string;
+  display_name?: string;
+};
+
+export type CreateAppRequest = {
+  name: string;
+  slug?: string;
+  templateKey?: string;
+  template_key?: string;
+  members?: AppMemberInput[];
+  accessMode?: AppAccessMode;
+  access_mode?: AppAccessMode;
+  llmsTxtMarkdown?: string;
+  llms_txt_markdown?: string;
+  setupPlaybookJson?: AppPlaybookStep[];
+  setup_playbook_json?: AppPlaybookStep[];
+  branding?: Record<string, unknown>;
+  mintConsumerToken?: boolean;
+  mint_consumer_token?: boolean;
+  consumerLabel?: string;
+  consumer_label?: string;
+  request?: RequestOptions;
+};
+
+export type AppInstallSnippet = HostedMcpInstallSnippet & {
+  llmsTxtUrl?: string;
+  llms_txt_url?: string;
+};
+
+export type CreateAppResponse = {
+  profile: PremanAppRecord;
+  consumerToken?: Record<string, unknown>;
+  rawToken?: string | null;
+  raw_token?: string | null;
+  installSnippet?: AppInstallSnippet | null;
+  dashboardUrl: string;
+  runtimeUrl: string;
+  llmsTxtUrl: string;
+  raw?: Record<string, unknown>;
+};
+
+export type GetAppResponse = {
+  app: PremanAppRecord;
+  raw?: Record<string, unknown>;
+};
+
+export type UpdateAppRequest = {
+  slug: string;
+  name?: string;
+  status?: "active" | "paused" | "archived";
+  llmsTxtMarkdown?: string;
+  llms_txt_markdown?: string;
+  setupPlaybookJson?: AppPlaybookStep[];
+  setup_playbook_json?: AppPlaybookStep[];
+  branding?: Record<string, unknown>;
+  accessMode?: AppAccessMode;
+  access_mode?: AppAccessMode;
+  templateKey?: string;
+  template_key?: string;
+  request?: RequestOptions;
+};
+
+export type ImportMcpServerRequest = {
+  config?: Record<string, unknown>;
+  mcpUrl?: string;
+  mcp_url?: string;
+  name?: string;
+  initialSecret?: string;
+  initial_secret?: string;
+  initialSecretType?: "bearer" | "api_key" | "basic" | "custom";
+  initial_secret_type?: "bearer" | "api_key" | "basic" | "custom";
+  request?: RequestOptions;
+};
+
+export type ManagedMcpServerRecord = {
+  id: string;
+  name: string;
+  transportType?: string;
+  transport_type?: string;
+  status?: string;
+  connectionConfig?: Record<string, unknown>;
+  connection_config?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+export type ImportMcpServerResponse = {
+  server: ManagedMcpServerRecord;
+  initialCredential?: Record<string, unknown> | null;
+  raw?: Record<string, unknown>;
+};
+
+export type AddAppMemberRequest = {
+  profileId: string;
+  serverId?: string;
+  server_id?: string;
+  hostedMcpId?: string;
+  hosted_mcp_id?: string;
+  prefix: string;
+  displayName?: string;
+  display_name?: string;
+  request?: RequestOptions;
+};
+
+export type AddAppMemberResponse = {
+  profile: PremanAppRecord;
+  raw?: Record<string, unknown>;
+};
+
+export type MintAppTokenRequest = {
+  profileId: string;
+  consumerLabel?: string;
+  consumer_label?: string;
+  request?: RequestOptions;
+};
+
+export type MintAppTokenResponse = {
+  profileId: string;
+  slug: string;
+  consumerToken?: Record<string, unknown>;
+  rawToken?: string | null;
+  raw_token?: string | null;
+  installSnippet: AppInstallSnippet;
+  runtimeUrl: string;
+  llmsTxtUrl: string;
+  raw?: Record<string, unknown>;
+};
