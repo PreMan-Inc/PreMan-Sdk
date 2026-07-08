@@ -198,6 +198,7 @@ export type StartConsumerUpstreamOAuthRequest = {
 export type HostedMcpRecord = Record<string, unknown> & {
   id?: string;
   name?: string;
+  llms_txt_markdown?: string;
   upstream_base_url?: string;
   upstream_mode?: UpstreamMode;
   upstream_status?: UpstreamHostingRuntimeStatus;
@@ -237,6 +238,22 @@ export type ListHostedMcpsResponse = {
 export type GetHostedMcpResponse = {
   hostedMcp: HostedMcpRecord;
   raw: Record<string, unknown>;
+};
+
+export type UpdateHostedMcpRequest = {
+  mcpId: string;
+  name?: string;
+  llmsTxtMarkdown?: string;
+  upstreamBaseUrl?: string;
+  upstreamAuthStyle?: UpstreamAuthStyle;
+  endpointSelection?: unknown;
+  toolSchemaOverrides?: Record<string, unknown>;
+  status?: "active" | "paused" | "archived";
+  accessMode?: HostedMcpAccessMode;
+  humanApprovalRequired?: boolean;
+  syncCoherenceCheck?: boolean;
+  verificationTier?: 1 | 2;
+  request?: RequestOptions;
 };
 
 export type ImportFromDocsRequest = {

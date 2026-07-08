@@ -32,6 +32,7 @@ import {
   type RotateTokenRequest,
   type RotateTokenResponse,
   type SendLocalStdioTunnelMessageRequest,
+  type UpdateHostedMcpRequest,
   type UpdateLocalStdioTunnelStatusRequest,
   type StartConsumerUpstreamOAuthRequest,
   type StartUpstreamOAuthRequest,
@@ -67,8 +68,8 @@ export class PremanClient {
   private readonly hooks: PremanClientOptions["hooks"];
 
   constructor(options: PremanClientOptions = {}) {
-    const apiKey = options.apiKey ?? process.env["PREMAN_API_KEY"] ?? "";
-    if (!apiKey.trim()) {
+    const apiKey = (options.apiKey ?? process.env["PREMAN_API_KEY"] ?? "").trim();
+    if (!apiKey) {
       throw new PremanConfigError(
         "Missing API key. Create one at https://app.preman.live/settings, then run `preman init --api-key pm_live_...` or set PREMAN_API_KEY.",
       );
@@ -328,6 +329,34 @@ export class PremanClient {
     return {
       catalog: normalizeHostedMcpCatalog(detail.raw),
       raw: detail.raw,
+    };
+  }
+
+  async updateHostedMcp(request: UpdateHostedMcpRequest): Promise<GetHostedMcpResponse> {
+    requireString(request.mcpId, "mcpId");
+    const response = await this.request<Record<string, unknown>>(
+      `/hosted-mcps/${encodeURIComponent(request.mcpId)}`,
+      {
+        method: "PATCH",
+        body: omitUndefined({
+          name: request.name,
+          llms_txt_markdown: request.llmsTxtMarkdown,
+          upstream_base_url: request.upstreamBaseUrl,
+          upstream_auth_style: request.upstreamAuthStyle,
+          endpoint_selection: request.endpointSelection,
+          tool_schema_overrides: request.toolSchemaOverrides,
+          status: request.status,
+          access_mode: request.accessMode,
+          human_approval_required: request.humanApprovalRequired,
+          sync_coherence_check: request.syncCoherenceCheck,
+          verification_tier: request.verificationTier,
+        }),
+        request: request.request,
+      },
+    );
+    return {
+      hostedMcp: objectAt(response, "hosted_mcp") as HostedMcpRecord,
+      raw: response,
     };
   }
 

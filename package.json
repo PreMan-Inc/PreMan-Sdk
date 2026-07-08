@@ -44,6 +44,10 @@
     "./upstream-hosting": {
       "types": "./dist/upstream-hosting.d.ts",
       "import": "./dist/upstream-hosting.js"
+    },
+    "./llms": {
+      "types": "./dist/llms.d.ts",
+      "import": "./dist/llms.js"
     }
   },
   "main": "./dist/index.js",
@@ -67,6 +71,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "integration": "PREMAN_INTEGRATION=1 npm test",
+    "setup:apify-mcps": "npm run build && npx --yes tsx examples/setup-apify-mcps.ts",
+    "maintain:apify-mcps": "npm run build && npx --yes tsx examples/maintain-apify-mcps.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

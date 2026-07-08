@@ -38,6 +38,15 @@ export {
   parseCatalogSnapshot,
 } from "./catalog.js";
 export { generateEndpointTypes, generateHostedMcpToolTypes, schemaToType } from "./typegen.js";
+export {
+  apifyActorIdFromUpstream,
+  generateHostedMcpLlmsTxt,
+  hostedMcpGatewayUrl,
+  hostedMcpLlmsTxtUrl,
+  isApifyHostedMcp,
+  stripApifyNamePrefix,
+} from "./llms.js";
+export type { HostedMcpLlmsInput } from "./llms.js";
 export type {
   AuditEvent,
   AuditLogResponse,
@@ -87,6 +96,7 @@ export type {
   StartConsumerUpstreamOAuthRequest,
   StartUpstreamOAuthRequest,
   TokenMetadata,
+  UpdateHostedMcpRequest,
   UpdateLocalStdioTunnelStatusRequest,
   UpstreamAuthStyle,
   UpstreamBuildConfig,
