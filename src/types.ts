@@ -258,6 +258,81 @@ export type GithubIntegrationRemovalResponse = {
   endpoints_deactivated: number;
 };
 
+export type GithubCommitSummary = {
+  sha: string;
+  message: string;
+  author_name: string | null;
+  authored_at: string | null;
+  html_url: string | null;
+};
+
+export type GithubCommitListResponse = {
+  branch: string;
+  commits: GithubCommitSummary[];
+};
+
+export type ListGithubCommitsRequest = {
+  integrationId: string;
+  /** Number of recent commits to return (server range: 1-25, default 8). */
+  limit?: number;
+  request?: RequestOptions;
+};
+
+export type GithubSimulationStatus = "queued" | "running" | "succeeded" | "failed";
+export type GithubSimulationTrigger = "webhook" | "manual";
+export type GithubSimulationMode = "contract_synthetic" | "observed_behavior";
+
+export type GithubSimulationError = {
+  code: string;
+  message: string;
+};
+
+export type GithubSimulationRun = {
+  id: string;
+  integration_id: string;
+  status: GithubSimulationStatus;
+  trigger: GithubSimulationTrigger;
+  ref: string;
+  branch: string;
+  commit_sha: string;
+  before_sha: string | null;
+  simulation_mode: GithubSimulationMode;
+  baseline_commit_sha: string | null;
+  github_delivery_id: string | null;
+  attempt_count: number;
+  summary: Record<string, unknown>;
+  steps: Array<Record<string, unknown>>;
+  error: GithubSimulationError | null;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type GithubSimulationListResponse = {
+  runs: GithubSimulationRun[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type ListGithubSimulationsRequest = {
+  integrationId: string;
+  /** Number of runs to return (server range: 1-100, default 10). */
+  limit?: number;
+  /** Zero-based result offset. */
+  offset?: number;
+  request?: RequestOptions;
+};
+
+export type StartGithubSimulationRequest = {
+  integrationId: string;
+  /** Branch or ref to resolve when commitSha is omitted. */
+  ref?: string;
+  /** Exact 40-character Git commit SHA to simulate. */
+  commitSha?: string;
+  request?: RequestOptions;
+};
+
 /** Who runs the HTTP API that implements tool endpoints. */
 export type UpstreamMode = "external" | "preman";
 

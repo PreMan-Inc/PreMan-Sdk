@@ -33,8 +33,11 @@ import {
   type GetCapabilitiesRequest,
   type GithubInstallRefreshResponse,
   type GithubInstallStartResponse,
+  type GithubCommitListResponse,
   type GithubIntegration,
   type GithubIntegrationRemovalResponse,
+  type GithubSimulationListResponse,
+  type GithubSimulationRun,
   type GetUpstreamHostingStatusRequest,
   type HostedMcpInstallSnippet,
   type GetHostedMcpResponse,
@@ -51,6 +54,8 @@ import {
   type LocalStdioTunnelPollResponse,
   type LocalStdioTunnelResponse,
   type ListHostedMcpsResponse,
+  type ListGithubCommitsRequest,
+  type ListGithubSimulationsRequest,
   type ListFixTasksRequest,
   type ListIncidentsRequest,
   type ListProbeResultsRequest,
@@ -71,6 +76,7 @@ import {
   type UpdateHostedMcpRequest,
   type UpdateLocalStdioTunnelStatusRequest,
   type StartConsumerUpstreamOAuthRequest,
+  type StartGithubSimulationRequest,
   type StartSelfHealingRequest,
   type StartSelfHealingResponse,
   type StartUpstreamOAuthRequest,
@@ -381,6 +387,53 @@ export class PremanClient {
     return this.request<GithubIntegrationRemovalResponse>(
       `/integrations/github/${encodeURIComponent(integrationId)}`,
       { method: "DELETE", request },
+    );
+  }
+
+  /** List recent commits using the repository's server-managed GitHub connection. */
+  async listGithubCommits(request: ListGithubCommitsRequest): Promise<GithubCommitListResponse> {
+    requireString(request.integrationId, "integrationId");
+    const params = new URLSearchParams();
+    if (request.limit !== undefined) params.set("limit", String(request.limit));
+    const query = params.size ? `?${params}` : "";
+    return this.request<GithubCommitListResponse>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/commits${query}`,
+      { method: "GET", request: request.request },
+    );
+  }
+
+  /** List durable simulation runs for one connected GitHub repository. */
+  async listGithubSimulations(
+    request: ListGithubSimulationsRequest,
+  ): Promise<GithubSimulationListResponse> {
+    requireString(request.integrationId, "integrationId");
+    const params = new URLSearchParams();
+    if (request.limit !== undefined) params.set("limit", String(request.limit));
+    if (request.offset !== undefined) params.set("offset", String(request.offset));
+    const query = params.size ? `?${params}` : "";
+    return this.request<GithubSimulationListResponse>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/simulations${query}`,
+      { method: "GET", request: request.request },
+    );
+  }
+
+  /** Queue a manual simulation; GitHub credentials remain managed by PreMan. */
+  async startGithubSimulation(
+    request: StartGithubSimulationRequest,
+  ): Promise<GithubSimulationRun> {
+    requireString(request.integrationId, "integrationId");
+    if (request.ref !== undefined) requireString(request.ref, "ref");
+    if (request.commitSha !== undefined && !/^[0-9A-Fa-f]{40}$/.test(request.commitSha)) {
+      throw new PremanConfigError("commitSha must be a 40-character Git commit SHA.");
+    }
+    const body = omitUndefined({ ref: request.ref, commit_sha: request.commitSha });
+    return this.request<GithubSimulationRun>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/simulations`,
+      {
+        method: "POST",
+        ...(Object.keys(body).length ? { body } : {}),
+        request: request.request,
+      },
     );
   }
 

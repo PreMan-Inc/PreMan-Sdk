@@ -364,6 +364,150 @@ test("removeGithubIntegration sends an encoded DELETE and returns cleanup counts
   });
 });
 
+test("listGithubCommits uses the server-managed connection and forwards request options", async () => {
+  const sha = "a".repeat(40);
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      assert.equal(
+        String(url),
+        "https://api.preman.live/integrations/github/integration%2Fid/commits?limit=6",
+      );
+      assert.equal(init.method, "GET");
+      assert.equal(init.headers["X-Workspace-Id"], "workspace_123");
+      return jsonResponse({
+        branch: "main",
+        commits: [{
+          sha,
+          message: "Protect customer sessions",
+          author_name: "Alice",
+          authored_at: "2026-08-11T19:00:00Z",
+          html_url: `https://github.com/acme/api/commit/${sha}`,
+        }],
+      });
+    },
+  });
+
+  const result = await client.listGithubCommits({
+    integrationId: "integration/id",
+    limit: 6,
+    request: { headers: { "X-Workspace-Id": "workspace_123" } },
+  });
+  assert.equal(result.branch, "main");
+  assert.equal(result.commits[0].sha, sha);
+});
+
+test("listGithubSimulations sends pagination and returns the typed run envelope", async () => {
+  const sha = "b".repeat(40);
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      assert.equal(
+        String(url),
+        "https://api.preman.live/integrations/github/integration_123/simulations?limit=5&offset=10",
+      );
+      assert.equal(init.method, "GET");
+      return jsonResponse({
+        runs: [{
+          id: "run_123",
+          integration_id: "integration_123",
+          status: "queued",
+          trigger: "manual",
+          ref: "refs/heads/main",
+          branch: "main",
+          commit_sha: sha,
+          before_sha: null,
+          simulation_mode: "contract_synthetic",
+          baseline_commit_sha: null,
+          github_delivery_id: null,
+          attempt_count: 0,
+          summary: {},
+          steps: [],
+          error: null,
+          created_at: "2026-08-12T12:00:00Z",
+          started_at: null,
+          finished_at: null,
+        }],
+        total: 11,
+        limit: 5,
+        offset: 10,
+      });
+    },
+  });
+
+  const result = await client.listGithubSimulations({
+    integrationId: "integration_123",
+    limit: 5,
+    offset: 10,
+  });
+  assert.equal(result.total, 11);
+  assert.equal(result.runs[0].commit_sha, sha);
+});
+
+test("startGithubSimulation maps ref and commitSha without exposing GitHub credentials", async () => {
+  const calls = [];
+  const sha = "c".repeat(40);
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        id: "run_123",
+        integration_id: "integration_123",
+        status: "queued",
+        trigger: "manual",
+        ref: "refs/heads/main",
+        branch: "main",
+        commit_sha: sha,
+        before_sha: null,
+        simulation_mode: "contract_synthetic",
+        baseline_commit_sha: null,
+        github_delivery_id: null,
+        attempt_count: 0,
+        summary: {},
+        steps: [],
+        error: null,
+        created_at: "2026-08-12T12:00:00Z",
+        started_at: null,
+        finished_at: null,
+      });
+    },
+  });
+
+  const result = await client.startGithubSimulation({
+    integrationId: "integration_123",
+    ref: "refs/heads/main",
+    commitSha: sha,
+  });
+  assert.equal(calls[0].url, "https://api.preman.live/integrations/github/integration_123/simulations");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    ref: "refs/heads/main",
+    commit_sha: sha,
+  });
+  assert.equal("token" in JSON.parse(calls[0].init.body), false);
+  assert.equal(result.commit_sha, sha);
+});
+
+test("startGithubSimulation keeps the default run bodyless and validates selected SHAs", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({});
+    },
+  });
+
+  await client.startGithubSimulation({ integrationId: "integration_123" });
+  assert.equal("body" in calls[0].init, false);
+  await assert.rejects(
+    () => client.startGithubSimulation({ integrationId: "integration_123", commitSha: "short" }),
+    (error) => error instanceof PremanConfigError && /40-character/.test(error.message),
+  );
+  assert.equal(calls.length, 1);
+});
+
 test("deployMcp sends preman upstream hosting fields", async () => {
   const calls = [];
   const client = new PremanClient({
