@@ -287,6 +287,42 @@ export type GithubSimulationError = {
   message: string;
 };
 
+export type GithubRuntimeAttestation = {
+  verified: number;
+  missing: number;
+  mismatched: number;
+};
+
+export type GithubSimulationRuntimeEvidence = {
+  planned: number;
+  executed: number;
+  passed: number;
+  failed: number;
+  unavailable: number;
+  coverage_complete: boolean;
+  candidate_verified: boolean;
+  attestation: GithubRuntimeAttestation;
+};
+
+export type GithubSimulationSummary = Record<string, unknown> & {
+  verdict?: "green" | "impact_detected" | "inconclusive" | "failed";
+  green?: boolean;
+  commit_sha?: string;
+  runtime_target?: "configured_environment" | "verified_candidate_environment";
+  runtime_coverage_complete?: boolean;
+  candidate_runtime_verified?: boolean;
+  runtime_attestation?: GithubRuntimeAttestation;
+  evidence?: Record<string, unknown> & {
+    runtime?: GithubSimulationRuntimeEvidence;
+  };
+  candidate?: {
+    commit_sha?: string;
+    source_scan_verified?: boolean;
+    runtime_verified?: boolean;
+    build_identity_verified?: boolean;
+  };
+};
+
 export type GithubSimulationRun = {
   id: string;
   integration_id: string;
@@ -300,7 +336,7 @@ export type GithubSimulationRun = {
   baseline_commit_sha: string | null;
   github_delivery_id: string | null;
   attempt_count: number;
-  summary: Record<string, unknown>;
+  summary: GithubSimulationSummary;
   steps: Array<Record<string, unknown>>;
   error: GithubSimulationError | null;
   created_at: string | null;
