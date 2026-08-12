@@ -252,6 +252,12 @@ export type GithubIntegration = {
   github_account_login?: string | null;
 };
 
+export type GithubIntegrationRemovalResponse = {
+  ok: true;
+  integration_id: string;
+  endpoints_deactivated: number;
+};
+
 /** Who runs the HTTP API that implements tool endpoints. */
 export type UpstreamMode = "external" | "preman";
 

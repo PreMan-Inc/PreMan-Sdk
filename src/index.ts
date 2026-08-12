@@ -110,6 +110,7 @@ export type {
   GithubInstallRefreshResponse,
   GithubInstallStartResponse,
   GithubIntegration,
+  GithubIntegrationRemovalResponse,
   GetUpstreamHostingStatusRequest,
   HostedMcpInstallSnippet,
   GetHostedMcpResponse,

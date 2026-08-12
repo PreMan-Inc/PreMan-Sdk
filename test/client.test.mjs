@@ -336,6 +336,34 @@ test("listGithubIntegrations exposes safe GitHub App metadata", async () => {
   assert.equal("access_token" in integrations[0], false);
 });
 
+test("removeGithubIntegration sends an encoded DELETE and returns cleanup counts", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        ok: true,
+        integration_id: "integration/id",
+        endpoints_deactivated: 12,
+      });
+    },
+  });
+
+  const result = await client.removeGithubIntegration("integration/id");
+  assert.equal(
+    calls[0].url,
+    "https://api.preman.live/integrations/github/integration%2Fid",
+  );
+  assert.equal(calls[0].init.method, "DELETE");
+  assert.equal("body" in calls[0].init, false);
+  assert.deepEqual(result, {
+    ok: true,
+    integration_id: "integration/id",
+    endpoints_deactivated: 12,
+  });
+});
+
 test("deployMcp sends preman upstream hosting fields", async () => {
   const calls = [];
   const client = new PremanClient({

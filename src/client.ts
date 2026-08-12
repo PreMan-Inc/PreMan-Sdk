@@ -34,6 +34,7 @@ import {
   type GithubInstallRefreshResponse,
   type GithubInstallStartResponse,
   type GithubIntegration,
+  type GithubIntegrationRemovalResponse,
   type GetUpstreamHostingStatusRequest,
   type HostedMcpInstallSnippet,
   type GetHostedMcpResponse,
@@ -369,6 +370,18 @@ export class PremanClient {
       method: "GET",
       request,
     });
+  }
+
+  /** Soft-disconnect one GitHub repository and its derived PreMan endpoints. */
+  async removeGithubIntegration(
+    integrationId: string,
+    request: RequestOptions = {},
+  ): Promise<GithubIntegrationRemovalResponse> {
+    requireString(integrationId, "integrationId");
+    return this.request<GithubIntegrationRemovalResponse>(
+      `/integrations/github/${encodeURIComponent(integrationId)}`,
+      { method: "DELETE", request },
+    );
   }
 
   async getUpstreamHostingStatus(request: GetUpstreamHostingStatusRequest): Promise<UpstreamHostingRecord> {
