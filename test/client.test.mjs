@@ -232,6 +232,110 @@ test("getCapabilities normalizes preman upstream hosting", async () => {
   assert.equal(caps.upstreamHosting.defaultMode, "preman");
 });
 
+test("startGithubInstall returns the one-click GitHub App authorization URL", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({ install_url: "https://github.com/apps/preman/installations/new?state=safe" });
+    },
+  });
+
+  const result = await client.startGithubInstall();
+  assert.equal(calls[0].url, "https://api.preman.live/integrations/github/app/install");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(result.install_url, "https://github.com/apps/preman/installations/new?state=safe");
+  assert.equal(result.mode, undefined);
+  assert.equal(result.installations, undefined);
+});
+
+test("startGithubInstall exposes existing installations without breaking the old response", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => jsonResponse({
+      install_url: "https://github.com/apps/preman/installations/new?state=safe",
+      mode: "configure",
+      installations: [{
+        account_login: "PreMan-Inc",
+        configure_url: "https://github.com/organizations/PreMan-Inc/settings/installations/91",
+      }],
+    }),
+  });
+
+  const result = await client.startGithubInstall();
+  assert.equal(result.mode, "configure");
+  assert.equal(result.installations[0].account_login, "PreMan-Inc");
+});
+
+test("refreshGithubInstallations sends a bodyless POST and returns reconciliation counts", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        installations_refreshed: 1,
+        repositories_connected: 2,
+        repositories_deactivated: 3,
+      });
+    },
+  });
+
+  const result = await client.refreshGithubInstallations();
+  assert.equal(calls[0].url, "https://api.preman.live/integrations/github/app/refresh");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal("body" in calls[0].init, false);
+  assert.deepEqual(result, {
+    installations_refreshed: 1,
+    repositories_connected: 2,
+    repositories_deactivated: 3,
+  });
+});
+
+test("refreshGithubInstallations preserves API error status and code", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => jsonResponse(
+      { detail: { code: "github_app_not_connected", message: "Connect the GitHub App first." } },
+      { status: 409 },
+    ),
+  });
+
+  await assert.rejects(
+    () => client.refreshGithubInstallations(),
+    (error) => error instanceof PremanError
+      && error.status === 409
+      && error.body.detail.code === "github_app_not_connected",
+  );
+});
+
+test("listGithubIntegrations exposes safe GitHub App metadata", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      assert.equal(String(url), "https://api.preman.live/integrations/github");
+      assert.equal(init.method, "GET");
+      return jsonResponse([{
+        id: "integration_123",
+        repo_url: "https://github.com/preman-inc/preman-backend",
+        auto_pr_enabled: true,
+        simulate_on_push: true,
+        webhook_configured: true,
+        webhook_url: "https://api.preman.live/webhooks/github",
+        github_installation_id: 42,
+        credential_kind: "github_app",
+        github_account_login: "preman-inc",
+      }]);
+    },
+  });
+
+  const integrations = await client.listGithubIntegrations();
+  assert.equal(integrations[0].credential_kind, "github_app");
+  assert.equal(integrations[0].github_account_login, "preman-inc");
+  assert.equal("access_token" in integrations[0], false);
+});
+
 test("deployMcp sends preman upstream hosting fields", async () => {
   const calls = [];
   const client = new PremanClient({

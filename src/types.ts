@@ -218,6 +218,40 @@ export type WaitForSelfHealingRequest = {
   request?: RequestOptions;
 };
 
+export type GithubInstallStartResponse = {
+  install_url: string;
+  mode?: "install" | "configure";
+  installations?: GithubAppInstallationSummary[];
+};
+
+export type GithubAppInstallationSummary = {
+  account_login: string;
+  configure_url: string;
+};
+
+export type GithubInstallRefreshResponse = {
+  installations_refreshed: number;
+  repositories_connected: number;
+  repositories_deactivated: number;
+};
+
+export type GithubIntegration = {
+  id: string;
+  repo_url: string;
+  default_branch?: string | null;
+  discovered_endpoint_count?: number | null;
+  discovery_method?: string | null;
+  last_synced_at?: string | null;
+  created_at?: string | null;
+  auto_pr_enabled: boolean;
+  simulate_on_push: boolean;
+  webhook_configured: boolean;
+  webhook_url: string;
+  github_installation_id?: number | null;
+  credential_kind?: "pat" | "github_app" | null;
+  github_account_login?: string | null;
+};
+
 /** Who runs the HTTP API that implements tool endpoints. */
 export type UpstreamMode = "external" | "preman";
 

@@ -31,6 +31,9 @@ import {
   type DeployMcpResponse,
   type CreateLocalStdioTunnelRequest,
   type GetCapabilitiesRequest,
+  type GithubInstallRefreshResponse,
+  type GithubInstallStartResponse,
+  type GithubIntegration,
   type GetUpstreamHostingStatusRequest,
   type HostedMcpInstallSnippet,
   type GetHostedMcpResponse,
@@ -340,6 +343,32 @@ export class PremanClient {
       }
       throw error;
     }
+  }
+
+  /** Start the GitHub App authorization and repository-selection flow. */
+  async startGithubInstall(request: RequestOptions = {}): Promise<GithubInstallStartResponse> {
+    return this.request<GithubInstallStartResponse>("/integrations/github/app/install", {
+      method: "POST",
+      request,
+    });
+  }
+
+  /** Reconcile repositories after changing an existing GitHub App installation. */
+  async refreshGithubInstallations(
+    request: RequestOptions = {},
+  ): Promise<GithubInstallRefreshResponse> {
+    return this.request<GithubInstallRefreshResponse>("/integrations/github/app/refresh", {
+      method: "POST",
+      request,
+    });
+  }
+
+  /** List the current workspace's connected GitHub repositories. */
+  async listGithubIntegrations(request: RequestOptions = {}): Promise<GithubIntegration[]> {
+    return this.request<GithubIntegration[]>("/integrations/github", {
+      method: "GET",
+      request,
+    });
   }
 
   async getUpstreamHostingStatus(request: GetUpstreamHostingStatusRequest): Promise<UpstreamHostingRecord> {
