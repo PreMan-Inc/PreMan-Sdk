@@ -167,6 +167,105 @@ npx preman-sdk hosted-mcps
 npx preman-sdk hosted-mcps --id mcp_123
 ```
 
+## State assertions and read-only probes
+
+`preman assert` evaluates deterministic state checks against either a supplied
+observation or one read from a staging/system-of-record API with a read-only HTTP
+probe. This command does not call the PreMan API and does not require
+`PREMAN_API_KEY`.
+
+Create `preman.assert.json`:
+
+```json
+{
+  "id": "refund-created-correctly",
+  "probe": {
+    "url": "https://staging.example.com/refunds?order_id=1049",
+    "method": "GET",
+    "headersFromEnv": {
+      "Authorization": "STAGING_AUTHORIZATION"
+    },
+    "notFoundStatuses": [404],
+    "timeoutMs": 5000
+  },
+  "assertions": [
+    { "op": "exists", "pointer": "/refunds/0" },
+    { "op": "equals", "pointer": "/refunds/0/amount", "expected": 82 },
+    { "op": "equals", "pointer": "/refunds/0/status", "expected": "issued" },
+    { "op": "no_duplicate", "pointer": "/refunds" },
+    { "op": "latency_threshold", "maxMs": 1000 }
+  ]
+}
+```
+
+Run it:
+
+```bash
+export STAGING_AUTHORIZATION="Bearer staging-token"
+npx preman-sdk assert --file preman.assert.json
+```
+
+The command prints structured JSON. A fully passing check exits 0; assertion
+mismatches or verifier errors exit non-zero.
+
+Assertion semantics are intentionally strict:
+
+- `exists` checks structural presence, not truthiness. `null`, `false`, `0`, and `""` exist.
+- `not_exists` passes only for structural absence.
+- `equals` uses deep strict JSON equality. Object key order does not matter; array order does.
+- `contains` supports string substring checks and array member checks with deep equality.
+- `no_duplicate` expects an already-filtered array and passes when it has at most one item.
+- `latency_threshold` compares the observation latency to `maxMs`.
+
+Verdicts distinguish business-state mismatch from verifier failure:
+
+- `passed` means the observed state satisfies the assertion.
+- `failed` means trustworthy observed state contradicted the assertion.
+- `error` means the verifier could not establish the assertion reliably.
+
+For HTTP probes, 2xx responses produce an observation, 404 represents absence,
+only when the probe explicitly includes `"notFoundStatuses": [404]`, and
+401/403/404/429/other 4xx/5xx/timeout/network/malformed JSON responses are
+verifier errors otherwise. Probes support only GET and HEAD, reject URL
+username/password credentials, use environment-backed headers for target
+credentials in file-based CLI configs, and do not serialize resolved secrets.
+Endpoint evidence preserves query parameter names but redacts query values and
+strips URL fragments.
+
+File-based assertion configs reject literal `probe.headers` values to avoid
+committing credentials accidentally. Use `headersFromEnv` for `preman assert
+--file ...`. Programmatic TypeScript callers may still pass literal `headers`
+to `runHttpAssertionCheck` when they construct the probe in code. HTTP probe
+latency measures the time required to obtain a usable observation, including
+response body consumption and parsing.
+
+Programmatic use:
+
+```ts
+import { evaluateStateAssertions, runHttpAssertionCheck } from "preman-sdk/assertions";
+
+const pure = evaluateStateAssertions(
+  { found: true, value: { refunds: [{ amount: 82 }] }, latencyMs: 37 },
+  [
+    { op: "exists", pointer: "/refunds/0" },
+    { op: "equals", pointer: "/refunds/0/amount", expected: 82 },
+  ],
+);
+
+const probed = await runHttpAssertionCheck({
+  probe: {
+    url: "https://staging.example.com/refunds?order_id=1049",
+    headersFromEnv: { Authorization: "STAGING_AUTHORIZATION" },
+    notFoundStatuses: [404],
+  },
+  assertions: [{ op: "no_duplicate", pointer: "/refunds" }],
+});
+```
+
+This is the SDK-side assertion/probe foundation. It does not define an action
+test runner, action-contract schema, consistency-window polling, replay,
+certification, or server-side verification event storage.
+
 ## TypeScript SDK
 
 ```ts
@@ -535,6 +634,7 @@ npx preman-sdk import openapi --file openapi.json --out endpoints.json
 npx preman-sdk apply --file preman.config.json --dry-run
 npx preman-sdk snapshot --mcp-id mcp_123 --out preman-catalog.snapshot.json
 npx preman-sdk diff --approved preman-catalog.snapshot.json --mcp-id mcp_123
+npx preman-sdk assert --file preman.assert.json
 npx preman-sdk typegen --file endpoints.json --out preman-endpoints.ts
 npx preman-sdk typegen --mcp-id mcp_123 --client --out preman-tools.ts
 ```
