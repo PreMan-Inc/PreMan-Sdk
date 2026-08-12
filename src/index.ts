@@ -37,6 +37,12 @@ export {
   normalizeHostedMcpCatalog,
   parseCatalogSnapshot,
 } from "./catalog.js";
+export {
+  evaluateStateAssertion,
+  evaluateStateAssertions,
+  runHttpAssertionCheck,
+  runStateAssertionConfig,
+} from "./assertions.js";
 export { generateEndpointTypes, generateHostedMcpToolTypes, schemaToType } from "./typegen.js";
 export {
   apifyActorIdFromUpstream,
@@ -181,6 +187,22 @@ export type {
 export type { McpInstallTarget, HostedMcpConfig, WriteInstallOptions } from "./installers.js";
 export type { ManifestPlan, PremanManifest, PremanPolicyRule } from "./manifest.js";
 export type { SecretProvider } from "./secrets.js";
+export type {
+  AssertionBatchResult,
+  AssertionConfig,
+  AssertionConfigResult,
+  AssertionResult,
+  AssertionVerdict,
+  HttpAssertionCheckConfig,
+  HttpAssertionCheckOptions,
+  HttpAssertionCheckResult,
+  HttpProbeEvidence,
+  HttpProbeSpec,
+  JsonValue,
+  ProbeError,
+  StateAssertion,
+  StateObservation,
+} from "./assertions.js";
 export type {
   CatalogDiff,
   CatalogDiffFinding,

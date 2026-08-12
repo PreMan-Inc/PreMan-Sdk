@@ -7,6 +7,7 @@ import {
   normalizeHostedMcpCatalog,
   parseCatalogSnapshot,
 } from "./catalog.js";
+import { runStateAssertionConfig } from "./assertions.js";
 import { PremanClient } from "./client.js";
 import { readConfig, writeConfig } from "./config.js";
 import { fromOpenApi, fromPostmanCollection } from "./importers.js";
@@ -51,6 +52,7 @@ type Command =
   | "install-snippet"
   | "snapshot"
   | "diff"
+  | "assert"
   | "typegen"
   | "help";
 const VERSION = "0.5.0";
@@ -73,6 +75,11 @@ async function main(): Promise<void> {
     const appUrl = valueFor(args, "--app-url") ?? process.env["PREMAN_APP_URL"];
     const config = await writeConfig(omitUndefined({ apiKey, apiUrl, appUrl }));
     console.log(`PreMan config saved. Dashboard: ${config.appUrl}`);
+    return;
+  }
+
+  if (command === "assert") {
+    await handleAssertCommand(args);
     return;
   }
 
@@ -446,6 +453,49 @@ async function handleDiffCommand(args: string[], client: PremanClient): Promise<
     console.log(formatCatalogDiff(diff));
   }
   if (diff.blocking.length) {
+    process.exitCode = 1;
+  }
+}
+
+async function handleAssertCommand(args: string[]): Promise<void> {
+  const file = valueFor(args, "--file");
+  if (!file) {
+    console.log(JSON.stringify({
+      verdict: "error",
+      assertions: [],
+      error: { code: "invalid_config", message: "assert requires --file preman.assert.json" },
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+  let parsed: unknown;
+  let rawConfig: string;
+  try {
+    rawConfig = await readFile(file, "utf8");
+  } catch {
+    console.log(JSON.stringify({
+      verdict: "error",
+      assertions: [],
+      error: { code: "invalid_config", message: "Could not read assertion config file." },
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+  try {
+    parsed = JSON.parse(rawConfig);
+  } catch {
+    console.log(JSON.stringify({
+      verdict: "error",
+      assertions: [],
+      error: { code: "invalid_config", message: "Assertion config file is not valid JSON." },
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+
+  const result = await runStateAssertionConfig(parsed);
+  console.log(JSON.stringify(result, null, 2));
+  if (result.verdict !== "passed") {
     process.exitCode = 1;
   }
 }
@@ -828,6 +878,7 @@ Usage:
   npx preman-sdk apply --file preman.config.json --dry-run
   npx preman-sdk snapshot --mcp-id mcp_123 --out preman-catalog.snapshot.json
   npx preman-sdk diff --approved preman-catalog.snapshot.json --mcp-id mcp_123
+  npx preman-sdk assert --file preman.assert.json
   npx preman-sdk typegen --file endpoints.json --out preman-endpoints.ts
   npx preman-sdk typegen --mcp-id mcp_123 --client --out preman-tools.ts
   npx preman-sdk install-snippet --target cursor --server-name auth-mcp --url https://api.preman.live/h/.../mcp --token-env PREMAN_CONSUMER_TOKEN --write
@@ -881,6 +932,7 @@ Options:
   --allow-renamed-tools     Do not fail diff on likely renamed tools
   --allow-schema-broadening Do not fail diff on broader input schemas
   --allow-new-write-tools   Do not fail diff on new POST/PUT/PATCH/DELETE tools
+  --file                    JSON input for register/deploy/import/apply/assert/typegen
   --client                  For typegen --mcp-id, emit a thin callTool wrapper
   --consumer-label          Initial consumer token label (default: default-consumer)
   --idempotency-key         Idempotency key for write operations

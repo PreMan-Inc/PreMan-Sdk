@@ -53,6 +53,10 @@
       "types": "./dist/apps.d.ts",
       "import": "./dist/apps.js"
     },
+    "./assertions": {
+      "types": "./dist/assertions.d.ts",
+      "import": "./dist/assertions.js"
+    },
     "./platform-tools": {
       "types": "./dist/platform-tools.d.ts",
       "import": "./dist/platform-tools.js"

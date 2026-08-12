@@ -1,0 +1,36 @@
+{
+  "id": "refund-created-correctly",
+  "probe": {
+    "url": "https://staging.example.com/refunds?order_id=1049",
+    "method": "GET",
+    "headersFromEnv": {
+      "Authorization": "STAGING_AUTHORIZATION"
+    },
+    "notFoundStatuses": [404],
+    "timeoutMs": 5000
+  },
+  "assertions": [
+    {
+      "op": "exists",
+      "pointer": "/refunds/0"
+    },
+    {
+      "op": "equals",
+      "pointer": "/refunds/0/amount",
+      "expected": 82
+    },
+    {
+      "op": "equals",
+      "pointer": "/refunds/0/status",
+      "expected": "issued"
+    },
+    {
+      "op": "no_duplicate",
+      "pointer": "/refunds"
+    },
+    {
+      "op": "latency_threshold",
+      "maxMs": 1000
+    }
+  ]
+}
