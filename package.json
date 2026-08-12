@@ -1,7 +1,7 @@
 {
   "name": "preman-sdk",
-  "version": "0.4.0",
-  "description": "Production TypeScript SDK and CLI for turning APIs into hosted MCP servers with scoped agent tokens, audit logs, and policy controls.",
+  "version": "0.5.0",
+  "description": "TypeScript SDK and CLI for continuously testing and self-healing API endpoints.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://preman.live",
@@ -84,6 +84,10 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "self-healing",
+    "api-monitoring",
+    "api-testing",
+    "autofix",
     "mcp",
     "agents",
     "api",

@@ -5,16 +5,16 @@
 [![Workspace](https://img.shields.io/badge/PreMan-workspace-10b981)](https://app.preman.live)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-PreMan turns REST API endpoints into hosted MCP servers that AI agents can call with scoped consumer tokens.
+PreMan continuously tests API endpoints and turns production failures into validated code fixes and pull requests.
 
-Use this SDK when you want to register endpoints from code or CI, import API docs or existing remote MCP servers, deploy them behind a PreMan gateway URL, and mint scoped tokens for agents, customers, or temporary sessions. The hosted workspace at [app.preman.live](https://app.preman.live) is where your team sees hosted MCPs, customer tokens, audit logs, and the company knowledge graph generated from agent activity.
+Use this SDK to register endpoints, schedule safe probes, define when failures should trigger repair, inspect incidents, and run PreMan's native self-healing workflow. Hosted MCP access controls and post-agent action verification remain available as secondary capabilities.
 
 ```text
-Your API / CI job
-  -> preman-sdk
-  -> hosted MCP URL
-  -> scoped token for an agent or customer
-  -> audit logs in the hosted workspace
+Your API endpoints
+  -> continuous probes and failure rules
+  -> incident with a reproducible fix task
+  -> native repair + validation
+  -> fix branch and pull request
 ```
 
 ## Install
@@ -38,7 +38,7 @@ export PREMAN_API_KEY=pm_live_your_key
 # PREMAN_API_KEY also works for compatibility with the PreMan MCP.
 ```
 
-## Quick Start
+## Quick Start: Self-Healing Endpoints
 
 Create `endpoints.json`:
 
@@ -61,50 +61,67 @@ Create `endpoints.json`:
 ]
 ```
 
-Register the endpoints into a playground session:
+Register the endpoints from code or CI:
 
 ```bash
 npx preman-sdk register --file endpoints.json --upstream https://api.company.com
 ```
 
-`--upstream` is the base URL of the API PreMan should call. It is not your marketing site and it is not the hosted PreMan workspace URL.
-
-For example, if your endpoint file contains `POST /auth/login` and you pass:
+Once the endpoint is saved in your PreMan workspace, enable a one-minute health probe:
 
 ```bash
---upstream https://api.company.com
+npx preman-sdk monitor \
+  --endpoint-id <endpoint-id> \
+  --interval-seconds 60 \
+  --expected-status 200
 ```
 
-PreMan tests and hosts the tool against:
-
-```text
-https://api.company.com/auth/login
-```
-
-Use a deployed or tunneled API URL for hosted MCPs. `http://localhost:8000` only works from your own machine; PreMan's hosted runtime cannot reach your laptop unless you expose it with a tunnel such as ngrok or Cloudflare Tunnel.
-
-The CLI blocks `localhost` and private-network upstreams during `deploy` by default so you do not create a hosted MCP that cannot reach your API. Use `--allow-local` only for local-only previews.
-
-Deploy the same endpoints as a hosted MCP:
+Create a rule that starts native repair after three consecutive failures:
 
 ```bash
-npx preman-sdk deploy \
-  --name "Company Auth MCP" \
-  --file endpoints.json \
-  --upstream https://api.company.com
+npx preman-sdk healing-rule \
+  --endpoint-id <endpoint-id> \
+  --after-failures 3
 ```
 
-Mint a scoped consumer token:
+`healing-rule` enables `autofix` by default. When the rule fires and the workspace has an eligible connected repository, PreMan packages the failing request and observed response, maps it to the code, patches and validates the fix, pushes a branch, and opens a PR. It does not merge automatically.
+
+Follow incidents and repairs from the CLI:
 
 ```bash
-npx preman-sdk token \
-  --mcp-id 093c4ad4-477a-4e47-94b5-24ea8f1fe4f4 \
-  --consumer-label "Acme support agent" \
-  --scopes auth:login \
-  --rate-limit-rpm 60
+npx preman-sdk incidents
+npx preman-sdk fixes --status open
+npx preman-sdk heal --fix-task-id <fix-task-id> --wait
 ```
 
-Then open [app.preman.live](https://app.preman.live) to inspect the hosted MCP, copy the install snippet, revoke tokens, and review audit logs.
+Or configure the same loop in TypeScript:
+
+```ts
+import { PremanClient } from "preman-sdk";
+
+const preman = new PremanClient();
+const endpointId = process.env.PREMAN_ENDPOINT_ID!;
+
+await preman.configureEndpointProbe({
+  endpointId,
+  intervalSeconds: 60,
+  expectedStatus: 200,
+});
+
+await preman.createHealingRule({
+  targetId: endpointId,
+  thresholdFailures: 3,
+  autofixEnabled: true,
+});
+```
+
+Probe credentials are encrypted at rest and only their header names are returned. Scheduled requests default to `read_only`; destructive or billing-sensitive endpoints require an explicit `unattendedPolicy`.
+
+Open [app.preman.live](https://app.preman.live) to watch endpoint health, investigate incidents, and follow each repair through validation and PR creation.
+
+## Hosted MCP and Agent Security
+
+PreMan can also expose registered APIs as hosted MCP servers with scoped consumer tokens, policy controls, and audit logs. This remains supported for teams that need to secure agent access, but it is no longer the SDK's primary workflow.
 
 ## MCP Gateway Imports
 
@@ -574,23 +591,36 @@ PREMAN_APP_URL=https://app.preman.live
 
 ## Current API Surface
 
-Working today:
+Self-healing endpoint workflow:
+
+- `configureEndpointProbe()` / `listEndpointProbes()` -> continuously exercise saved API endpoints
+- `listEndpointProbeResults()` -> inspect status, latency, and failure details
+- `createHealingRule()` -> trigger incidents and native autofix after consecutive failures or an error-rate threshold
+- `listEndpointIncidents()` -> inspect fired and resolved endpoint incidents
+- `listFixTasks()` / `getFixTask()` -> follow reproducible repair packages
+- `startSelfHealing()` / `waitForSelfHealing()` -> run repair, validation, branch push, and PR creation
+- `resolveFixTask()` -> close a completed repair task
+
+Endpoint discovery and testing:
 
 - `registerEndpoints()` -> creates or updates a playground session
+- `fromOpenApi()` / `fromPostmanCollection()` -> converts API docs into endpoint definitions
+- `generateEndpointTypes()` -> generates TypeScript types from endpoint schemas
+
+Secondary hosted MCP and agent-security capabilities:
+
 - `deployMcp()` -> creates a hosted MCP from endpoint definitions
 - `createToken()` -> mints a scoped hosted MCP consumer token
 - `listTokens()` / `revokeToken()` / `rotateToken()` -> manage hosted MCP token lifecycle
 - `verifyToken()` / `verifyBearerToken()` -> verifies hosted MCP consumer tokens and scopes
 - `audit()` -> writes custom non-MCP agent events into PreMan audit logs
-- `fromOpenApi()` / `fromPostmanCollection()` -> converts API docs into endpoint definitions
 - `previewManifest()` / `readManifest()` -> validate policy-as-code manifests and dry runs
-- `generateEndpointTypes()` -> generate TypeScript types from endpoint schemas
 - `generateHostedMcpToolTypes()` -> generate TypeScript types from hosted MCP tool catalogs
 - `createCatalogSnapshot()` / `diffCatalogSnapshots()` -> pin approved tool catalogs and detect CI drift
 - `hostedMcpJson()` / `writeMcpInstall()` -> generate or write MCP install snippets
 - `resolveSecret()` / `secretFromEnv()` -> keep secrets out of command text and config
 - framework examples for Express, Fastify, Next.js, and Hono in `examples/frameworks`
-- `preman` CLI -> setup, register, import, apply, deploy, tokens, typegen, install snippets, status
+- `preman` CLI -> monitoring, healing, setup, register, import, deploy, tokens, and type generation
 
 Hosted MCP calls are already authenticated, scoped, and audited by PreMan.
 

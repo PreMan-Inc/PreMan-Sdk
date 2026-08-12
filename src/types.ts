@@ -45,6 +45,179 @@ export type RegisterEndpointsResponse = {
   endpointsUrl: string;
 };
 
+/** Standing authorization for scheduled requests against an endpoint. */
+export type UnattendedPolicy = "read_only" | "allow_writes" | "allow_destructive";
+
+export type ConfigureEndpointProbeRequest = {
+  endpointId: string;
+  enabled?: boolean;
+  /** Probe cadence in seconds (30..3600, default 60). */
+  intervalSeconds?: number;
+  /** Per-request timeout in seconds (0..30, default 10). */
+  timeoutSeconds?: number;
+  /** Exact expected status. When omitted, any status below 400 passes. */
+  expectedStatus?: number | null;
+  /** Target API headers. Values are encrypted by PreMan and never returned. */
+  headers?: Record<string, string> | null;
+  unattendedPolicy?: UnattendedPolicy;
+  request?: RequestOptions;
+};
+
+export type EndpointProbe = {
+  id: string;
+  endpointId: string;
+  enabled: boolean;
+  intervalSeconds: number;
+  timeoutSeconds: number;
+  expectedStatus?: number | null;
+  headerKeys: string[];
+  hasCustomHeaders: boolean;
+  nextDueAt?: string | null;
+  lastRunAt?: string | null;
+  method?: HttpMethod;
+  pathTemplate?: string;
+  baseUrl?: string;
+  raw: Record<string, unknown>;
+};
+
+export type ProbeResult = {
+  timestamp: string;
+  ok: boolean;
+  responseStatus?: number | null;
+  latencyMs?: number | null;
+  error?: string | null;
+  raw: Record<string, unknown>;
+};
+
+export type ListProbeResultsRequest = {
+  endpointId: string;
+  limit?: number;
+  request?: RequestOptions;
+};
+
+export type AlertRuleType = "consecutive_failures" | "error_rate";
+export type AlertTargetKind = "endpoint" | "hosted_mcp" | "auto_test_suite" | "project_logs";
+
+export type CreateHealingRuleRequest = {
+  name?: string;
+  targetKind?: AlertTargetKind;
+  targetId: string;
+  ruleType?: AlertRuleType;
+  thresholdFailures?: number;
+  errorRateThreshold?: number;
+  windowMinutes?: number;
+  minSamples?: number;
+  channelIds?: string[];
+  enabled?: boolean;
+  /** Queue PreMan's native repair engine automatically when this rule fires. */
+  autofixEnabled?: boolean;
+  quietHoursStart?: number | null;
+  quietHoursEnd?: number | null;
+  request?: RequestOptions;
+};
+
+export type HealingRule = {
+  id: string;
+  name: string;
+  targetKind: AlertTargetKind;
+  targetId: string;
+  ruleType: AlertRuleType;
+  thresholdFailures?: number | null;
+  errorRateThreshold?: number | null;
+  windowMinutes?: number | null;
+  minSamples: number;
+  channelIds: string[];
+  enabled: boolean;
+  autofixEnabled: boolean;
+  quietHoursStart?: number | null;
+  quietHoursEnd?: number | null;
+  lastEvaluatedAt?: string | null;
+  createdAt?: string | null;
+  raw: Record<string, unknown>;
+};
+
+export type EndpointIncident = {
+  id: string;
+  ruleId: string;
+  firedAt?: string | null;
+  resolvedAt?: string | null;
+  trigger: Record<string, unknown>;
+  deliveries: Array<Record<string, unknown>>;
+  resolutionDeliveries: Array<Record<string, unknown>>;
+  deliveryPending: boolean;
+  raw: Record<string, unknown>;
+};
+
+export type ListIncidentsRequest = {
+  ruleId?: string;
+  limit?: number;
+  request?: RequestOptions;
+};
+
+export type FixTaskStatus = "open" | "delivered" | "resolved";
+export type SelfHealingStage =
+  | "queued"
+  | "cloning"
+  | "patching"
+  | "validating"
+  | "pushing"
+  | "opening_pr"
+  | "done"
+  | "failed"
+  | string;
+
+export type FixTask = {
+  id: string;
+  workspaceId?: string | null;
+  sourceKind: string;
+  sourceId: string;
+  status: FixTaskStatus;
+  package: Record<string, unknown>;
+  githubIssueUrl?: string | null;
+  jiraIssueUrl?: string | null;
+  prUrl?: string | null;
+  executor?: string | null;
+  dispatchProvider?: string | null;
+  dispatchRunId?: string | null;
+  dispatchRunUrl?: string | null;
+  dispatchStatus?: string | null;
+  dispatchStage?: SelfHealingStage | null;
+  dispatchResult?: unknown;
+  dispatchAttempts: number;
+  dispatchedAt?: string | null;
+  deliveredAt?: string | null;
+  resolvedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  raw: Record<string, unknown>;
+};
+
+export type ListFixTasksRequest = {
+  status?: FixTaskStatus;
+  limit?: number;
+  request?: RequestOptions;
+};
+
+export type StartSelfHealingRequest = {
+  fixTaskId: string;
+  request?: RequestOptions;
+};
+
+export type StartSelfHealingResponse = {
+  fixTaskId: string;
+  dispatch: Record<string, unknown>;
+  raw: Record<string, unknown>;
+};
+
+export type WaitForSelfHealingRequest = {
+  fixTaskId: string;
+  /** Poll interval in milliseconds (default 3000). */
+  pollIntervalMs?: number;
+  /** Maximum wait in milliseconds (default 300000). */
+  timeoutMs?: number;
+  request?: RequestOptions;
+};
+
 /** Who runs the HTTP API that implements tool endpoints. */
 export type UpstreamMode = "external" | "preman";
 

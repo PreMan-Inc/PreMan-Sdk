@@ -8,8 +8,10 @@ import {
   type AuditLogResponse,
   type CallPlatformToolRequest,
   type CallPlatformToolResponse,
+  type ConfigureEndpointProbeRequest,
   type CreateAppRequest,
   type CreateAppResponse,
+  type CreateHealingRuleRequest,
   type DiscoverCapabilitiesRequest,
   type DiscoverCapabilitiesResponse,
   type GetAppResponse,
@@ -35,16 +37,24 @@ import {
   type HostedMcpImportResponse,
   type HostedMcpRecord,
   type GetHostedMcpCatalogResponse,
+  type EndpointIncident,
+  type EndpointProbe,
+  type FixTask,
+  type HealingRule,
   type ImportFromDocsRequest,
   type ImportRemoteMcpRequest,
   type LocalStdioTunnelPollRequest,
   type LocalStdioTunnelPollResponse,
   type LocalStdioTunnelResponse,
   type ListHostedMcpsResponse,
+  type ListFixTasksRequest,
+  type ListIncidentsRequest,
+  type ListProbeResultsRequest,
   type ListTokensRequest,
   type ListTokensResponse,
   type PremanCapabilities,
   type PremanClientOptions,
+  type ProbeResult,
   type RegisterEndpointsRequest,
   type RegisterEndpointsResponse,
   type RequestOptions,
@@ -57,6 +67,8 @@ import {
   type UpdateHostedMcpRequest,
   type UpdateLocalStdioTunnelStatusRequest,
   type StartConsumerUpstreamOAuthRequest,
+  type StartSelfHealingRequest,
+  type StartSelfHealingResponse,
   type StartUpstreamOAuthRequest,
   type TokenMetadata,
   type UpstreamHostingRecord,
@@ -64,6 +76,7 @@ import {
   type UpstreamOAuthStartResponse,
   type VerifyTokenRequest,
   type VerifyTokenResponse,
+  type WaitForSelfHealingRequest,
   type WaitForUpstreamHostingRequest,
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
@@ -142,6 +155,176 @@ export class PremanClient {
       dashboardUrl,
       endpointsUrl: dashboardUrl,
     };
+  }
+
+  /** Configure continuous health testing for a saved API endpoint. */
+  async configureEndpointProbe(request: ConfigureEndpointProbeRequest): Promise<EndpointProbe> {
+    requireString(request.endpointId, "endpointId");
+    const response = await this.request<Record<string, unknown>>(
+      `/monitoring/endpoints/${encodeURIComponent(request.endpointId)}/probe`,
+      {
+        method: "PUT",
+        body: omitUndefined({
+          enabled: request.enabled ?? true,
+          interval_seconds: request.intervalSeconds ?? 60,
+          timeout_seconds: request.timeoutSeconds ?? 10,
+          expected_status: request.expectedStatus,
+          headers: request.headers,
+          unattended_policy: request.unattendedPolicy ?? "read_only",
+        }),
+        request: request.request,
+      },
+    );
+    return normalizeEndpointProbe(response);
+  }
+
+  async listEndpointProbes(request: RequestOptions = {}): Promise<EndpointProbe[]> {
+    const response = await this.request<Record<string, unknown>>("/monitoring/probes", {
+      method: "GET",
+      request,
+    });
+    return arrayOfObjectsAt(response, "probes").map(normalizeEndpointProbe);
+  }
+
+  async removeEndpointProbe(endpointId: string, request: RequestOptions = {}): Promise<{ deleted: boolean }> {
+    requireString(endpointId, "endpointId");
+    const response = await this.request<Record<string, unknown>>(
+      `/monitoring/endpoints/${encodeURIComponent(endpointId)}/probe`,
+      { method: "DELETE", request },
+    );
+    return { deleted: response["deleted"] === true };
+  }
+
+  async listEndpointProbeResults(request: ListProbeResultsRequest): Promise<ProbeResult[]> {
+    requireString(request.endpointId, "endpointId");
+    const params = new URLSearchParams();
+    if (request.limit !== undefined) params.set("limit", String(request.limit));
+    const query = params.size ? `?${params}` : "";
+    const response = await this.request<Record<string, unknown>>(
+      `/monitoring/endpoints/${encodeURIComponent(request.endpointId)}/results${query}`,
+      { method: "GET", request: request.request },
+    );
+    return arrayOfObjectsAt(response, "results").map(normalizeProbeResult);
+  }
+
+  /**
+   * Create a failure rule for an endpoint. Native self-healing is enabled by
+   * default so a fired incident can move directly into repair and validation.
+   */
+  async createHealingRule(request: CreateHealingRuleRequest): Promise<HealingRule> {
+    requireString(request.targetId, "targetId");
+    const ruleType = request.ruleType ?? "consecutive_failures";
+    const response = await this.request<Record<string, unknown>>("/monitoring/alert-rules", {
+      method: "POST",
+      body: omitUndefined({
+        name: request.name ?? "Self-heal failing endpoint",
+        target_kind: request.targetKind ?? "endpoint",
+        target_id: request.targetId,
+        rule_type: ruleType,
+        threshold_failures: ruleType === "consecutive_failures"
+          ? (request.thresholdFailures ?? 3)
+          : request.thresholdFailures,
+        error_rate_threshold: request.errorRateThreshold,
+        window_minutes: request.windowMinutes,
+        min_samples: request.minSamples ?? 5,
+        channel_ids: request.channelIds ?? [],
+        enabled: request.enabled ?? true,
+        autofix_enabled: request.autofixEnabled ?? true,
+        quiet_hours_start: request.quietHoursStart,
+        quiet_hours_end: request.quietHoursEnd,
+      }),
+      request: request.request,
+    });
+    return normalizeHealingRule(response);
+  }
+
+  async listHealingRules(request: RequestOptions = {}): Promise<HealingRule[]> {
+    const response = await this.request<Record<string, unknown>>("/monitoring/alert-rules", {
+      method: "GET",
+      request,
+    });
+    return arrayOfObjectsAt(response, "rules").map(normalizeHealingRule);
+  }
+
+  async listEndpointIncidents(request: ListIncidentsRequest = {}): Promise<EndpointIncident[]> {
+    const params = new URLSearchParams();
+    if (request.ruleId) params.set("rule_id", request.ruleId);
+    if (request.limit !== undefined) params.set("limit", String(request.limit));
+    const query = params.size ? `?${params}` : "";
+    const response = await this.request<Record<string, unknown>>(`/monitoring/alert-events${query}`, {
+      method: "GET",
+      request: request.request,
+    });
+    return arrayOfObjectsAt(response, "events").map(normalizeEndpointIncident);
+  }
+
+  async listFixTasks(request: ListFixTasksRequest = {}): Promise<FixTask[]> {
+    const params = new URLSearchParams();
+    if (request.status) params.set("status", request.status);
+    if (request.limit !== undefined) params.set("limit", String(request.limit));
+    const query = params.size ? `?${params}` : "";
+    const response = await this.request<Record<string, unknown>>(`/monitoring/fix-tasks${query}`, {
+      method: "GET",
+      request: request.request,
+    });
+    return arrayOfObjectsAt(response, "fix_tasks").map(normalizeFixTask);
+  }
+
+  async getFixTask(fixTaskId: string, request: RequestOptions = {}): Promise<FixTask> {
+    requireString(fixTaskId, "fixTaskId");
+    const response = await this.request<Record<string, unknown>>(
+      `/monitoring/fix-tasks/${encodeURIComponent(fixTaskId)}`,
+      { method: "GET", request },
+    );
+    return normalizeFixTask(response);
+  }
+
+  /** Queue PreMan's native repair, validation, branch, and PR workflow. */
+  async startSelfHealing(request: StartSelfHealingRequest): Promise<StartSelfHealingResponse> {
+    requireString(request.fixTaskId, "fixTaskId");
+    const response = await this.request<Record<string, unknown>>(
+      `/monitoring/fix-tasks/${encodeURIComponent(request.fixTaskId)}/autofix`,
+      { method: "POST", request: request.request },
+    );
+    return {
+      fixTaskId: stringAt(response, "fix_task_id") || request.fixTaskId,
+      dispatch: objectAt(response, "dispatch"),
+      raw: response,
+    };
+  }
+
+  /** Wait until a native repair finishes, fails, or the timeout expires. */
+  async waitForSelfHealing(request: WaitForSelfHealingRequest): Promise<FixTask> {
+    requireString(request.fixTaskId, "fixTaskId");
+    const pollIntervalMs = request.pollIntervalMs ?? 3_000;
+    const timeoutMs = request.timeoutMs ?? 300_000;
+    const started = Date.now();
+    while (true) {
+      const task = await this.getFixTask(request.fixTaskId, request.request);
+      if (task.dispatchStage === "done" || task.status === "resolved") return task;
+      if (task.dispatchStage === "failed") {
+        throw new PremanError("Self-healing failed. Inspect the fix task dispatch result for details.", {
+          status: 424,
+          body: task.raw,
+        });
+      }
+      if (Date.now() - started >= timeoutMs) {
+        throw new PremanError(
+          `Timed out waiting for self-healing to complete (last stage: ${task.dispatchStage ?? "pending"}).`,
+          { status: 408, body: task.raw },
+        );
+      }
+      await sleep(pollIntervalMs);
+    }
+  }
+
+  async resolveFixTask(fixTaskId: string, request: RequestOptions = {}): Promise<FixTask> {
+    requireString(fixTaskId, "fixTaskId");
+    const response = await this.request<Record<string, unknown>>(
+      `/monitoring/fix-tasks/${encodeURIComponent(fixTaskId)}/resolve`,
+      { method: "POST", request },
+    );
+    return normalizeFixTask(objectAt(response, "fix_task"));
   }
 
   async getCapabilities(request: GetCapabilitiesRequest = {}): Promise<PremanCapabilities> {
@@ -865,6 +1048,111 @@ export class PremanClient {
     }
     throw new PremanError("PreMan API request failed after retry attempts.");
   }
+}
+
+function normalizeEndpointProbe(raw: Record<string, unknown>): EndpointProbe {
+  const method = stringAt(raw, "method").toUpperCase();
+  return {
+    id: stringAt(raw, "id"),
+    endpointId: stringAt(raw, "endpoint_id"),
+    enabled: raw["enabled"] !== false,
+    intervalSeconds: numberAt(raw, "interval_seconds"),
+    timeoutSeconds: numberAt(raw, "timeout_seconds"),
+    expectedStatus: nullableNumberAt(raw, "expected_status"),
+    headerKeys: stringArrayAt(raw, "header_keys"),
+    hasCustomHeaders: raw["has_custom_headers"] === true,
+    nextDueAt: nullableStringAt(raw, "next_due_at"),
+    lastRunAt: nullableStringAt(raw, "last_run_at"),
+    method: isHttpMethod(method) ? method : undefined,
+    pathTemplate: stringOrUndefined(raw, "path_template"),
+    baseUrl: stringOrUndefined(raw, "base_url"),
+    raw,
+  };
+}
+
+function normalizeProbeResult(raw: Record<string, unknown>): ProbeResult {
+  return {
+    timestamp: stringAt(raw, "ts"),
+    ok: raw["ok"] === true,
+    responseStatus: nullableNumberAt(raw, "response_status"),
+    latencyMs: nullableNumberAt(raw, "latency_ms"),
+    error: nullableStringAt(raw, "error"),
+    raw,
+  };
+}
+
+function normalizeHealingRule(raw: Record<string, unknown>): HealingRule {
+  return {
+    id: stringAt(raw, "id"),
+    name: stringAt(raw, "name"),
+    targetKind: stringAt(raw, "target_kind") as HealingRule["targetKind"],
+    targetId: stringAt(raw, "target_id"),
+    ruleType: stringAt(raw, "rule_type") as HealingRule["ruleType"],
+    thresholdFailures: nullableNumberAt(raw, "threshold_failures"),
+    errorRateThreshold: nullableNumberAt(raw, "error_rate_threshold"),
+    windowMinutes: nullableNumberAt(raw, "window_minutes"),
+    minSamples: numberAt(raw, "min_samples"),
+    channelIds: stringArrayAt(raw, "channel_ids"),
+    enabled: raw["enabled"] !== false,
+    autofixEnabled: raw["autofix_enabled"] === true,
+    quietHoursStart: nullableNumberAt(raw, "quiet_hours_start"),
+    quietHoursEnd: nullableNumberAt(raw, "quiet_hours_end"),
+    lastEvaluatedAt: nullableStringAt(raw, "last_evaluated_at"),
+    createdAt: nullableStringAt(raw, "created_at"),
+    raw,
+  };
+}
+
+function normalizeEndpointIncident(raw: Record<string, unknown>): EndpointIncident {
+  return {
+    id: stringAt(raw, "id"),
+    ruleId: stringAt(raw, "rule_id"),
+    firedAt: nullableStringAt(raw, "fired_at"),
+    resolvedAt: nullableStringAt(raw, "resolved_at"),
+    trigger: objectAt(raw, "trigger"),
+    deliveries: arrayOfObjectsAt(raw, "deliveries"),
+    resolutionDeliveries: arrayOfObjectsAt(raw, "resolve_deliveries"),
+    deliveryPending: raw["delivery_pending"] === true,
+    raw,
+  };
+}
+
+function normalizeFixTask(raw: Record<string, unknown>): FixTask {
+  return {
+    id: stringAt(raw, "id"),
+    workspaceId: nullableStringAt(raw, "workspace_id"),
+    sourceKind: stringAt(raw, "source_kind"),
+    sourceId: stringAt(raw, "source_id"),
+    status: stringAt(raw, "status") as FixTask["status"],
+    package: objectAt(raw, "package"),
+    githubIssueUrl: nullableStringAt(raw, "github_issue_url"),
+    jiraIssueUrl: nullableStringAt(raw, "jira_issue_url"),
+    prUrl: nullableStringAt(raw, "pr_url"),
+    executor: nullableStringAt(raw, "executor"),
+    dispatchProvider: nullableStringAt(raw, "dispatch_provider"),
+    dispatchRunId: nullableStringAt(raw, "dispatch_run_id"),
+    dispatchRunUrl: nullableStringAt(raw, "dispatch_run_url"),
+    dispatchStatus: nullableStringAt(raw, "dispatch_status"),
+    dispatchStage: nullableStringAt(raw, "dispatch_stage"),
+    dispatchResult: raw["dispatch_result"],
+    dispatchAttempts: numberAt(raw, "dispatch_attempts"),
+    dispatchedAt: nullableStringAt(raw, "dispatched_at"),
+    deliveredAt: nullableStringAt(raw, "delivered_at"),
+    resolvedAt: nullableStringAt(raw, "resolved_at"),
+    createdAt: nullableStringAt(raw, "created_at"),
+    updatedAt: nullableStringAt(raw, "updated_at"),
+    raw,
+  };
+}
+
+function nullableNumberAt(value: Record<string, unknown>, key: string): number | null | undefined {
+  const item = value[key];
+  if (item === null) return null;
+  return typeof item === "number" ? item : undefined;
+}
+
+function isHttpMethod(value: string): value is EndpointProbe["method"] & string {
+  return ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(value);
 }
 
 function normalizeRetry(retry: RetryOptions | undefined = {}): Required<RetryOptions> {

@@ -50,6 +50,124 @@ test("registerEndpoints writes to an agent session", async () => {
   assert.equal(result.dashboardUrl, "https://app.preman.live/try?session=session_123");
 });
 
+test("configureEndpointProbe enables continuous endpoint testing with safe defaults", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        id: "probe_123",
+        endpoint_id: "endpoint_123",
+        enabled: true,
+        interval_seconds: 60,
+        timeout_seconds: 10,
+        expected_status: 200,
+        header_keys: ["Authorization"],
+        has_custom_headers: true,
+        method: "GET",
+        path_template: "/health",
+      });
+    },
+  });
+
+  const result = await client.configureEndpointProbe({
+    endpointId: "endpoint_123",
+    expectedStatus: 200,
+    headers: { Authorization: "Bearer secret" },
+  });
+
+  assert.equal(calls[0].url, "https://api.preman.live/monitoring/endpoints/endpoint_123/probe");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    enabled: true,
+    interval_seconds: 60,
+    timeout_seconds: 10,
+    expected_status: 200,
+    headers: { Authorization: "Bearer secret" },
+    unattended_policy: "read_only",
+  });
+  assert.equal(result.endpointId, "endpoint_123");
+  assert.deepEqual(result.headerKeys, ["Authorization"]);
+});
+
+test("createHealingRule turns native autofix on by default", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        id: "rule_123",
+        name: "Self-heal failing endpoint",
+        target_kind: "endpoint",
+        target_id: "endpoint_123",
+        rule_type: "consecutive_failures",
+        threshold_failures: 3,
+        min_samples: 5,
+        channel_ids: [],
+        enabled: true,
+        autofix_enabled: true,
+      });
+    },
+  });
+
+  const result = await client.createHealingRule({ targetId: "endpoint_123" });
+  assert.equal(calls[0].url, "https://api.preman.live/monitoring/alert-rules");
+  const body = JSON.parse(calls[0].init.body);
+  assert.equal(body.target_kind, "endpoint");
+  assert.equal(body.threshold_failures, 3);
+  assert.equal(body.autofix_enabled, true);
+  assert.equal(result.autofixEnabled, true);
+});
+
+test("startSelfHealing queues the native repair route", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        fix_task_id: "fix_123",
+        dispatch: { provider: "native", stage: "queued", status: "dispatched" },
+      });
+    },
+  });
+
+  const result = await client.startSelfHealing({ fixTaskId: "fix_123" });
+  assert.equal(calls[0].url, "https://api.preman.live/monitoring/fix-tasks/fix_123/autofix");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(result.dispatch.stage, "queued");
+});
+
+test("waitForSelfHealing resolves when repair validation is done", async () => {
+  let calls = 0;
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({
+        id: "fix_123",
+        source_kind: "alert_event",
+        source_id: "event_123",
+        status: "open",
+        package: {},
+        dispatch_attempts: 1,
+        dispatch_stage: calls === 1 ? "validating" : "done",
+        pr_url: calls === 1 ? null : "https://github.com/acme/api/pull/42",
+      });
+    },
+  });
+
+  const result = await client.waitForSelfHealing({
+    fixTaskId: "fix_123",
+    pollIntervalMs: 0,
+    timeoutMs: 100,
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.dispatchStage, "done");
+  assert.equal(result.prUrl, "https://github.com/acme/api/pull/42");
+});
+
 test("deployMcp uses the hosted MCP deploy route and normalizes response", async () => {
   const calls = [];
   const client = new PremanClient({

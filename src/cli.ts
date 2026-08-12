@@ -26,6 +26,13 @@ import type { EndpointDefinition, UpstreamBuildConfig } from "./types.js";
 type Command =
   | "init"
   | "register"
+  | "monitor"
+  | "probes"
+  | "probe-results"
+  | "healing-rule"
+  | "incidents"
+  | "fixes"
+  | "heal"
   | "deploy"
   | "import-docs"
   | "import-remote-mcp"
@@ -46,7 +53,7 @@ type Command =
   | "diff"
   | "typegen"
   | "help";
-const VERSION = "0.3.1";
+const VERSION = "0.5.0";
 
 async function main(): Promise<void> {
   const [, , rawCommand = "help", ...args] = process.argv;
@@ -89,6 +96,80 @@ async function main(): Promise<void> {
 
   if (command === "capabilities") {
     console.log(JSON.stringify(await client.getCapabilities(), null, 2));
+    return;
+  }
+
+  if (command === "monitor") {
+    const endpointId = requiredValue(args, "--endpoint-id", "monitor requires --endpoint-id endpoint_...");
+    console.log(JSON.stringify(await client.configureEndpointProbe({
+      endpointId,
+      enabled: !hasFlag(args, "--disabled"),
+      intervalSeconds: numberFor(args, "--interval-seconds"),
+      timeoutSeconds: numberFor(args, "--timeout-seconds"),
+      expectedStatus: numberFor(args, "--expected-status"),
+      unattendedPolicy: valueFor(args, "--unattended-policy") as "read_only" | "allow_writes" | "allow_destructive" | undefined,
+    }), null, 2));
+    return;
+  }
+
+  if (command === "probes") {
+    console.log(JSON.stringify(await client.listEndpointProbes(), null, 2));
+    return;
+  }
+
+  if (command === "probe-results") {
+    console.log(JSON.stringify(await client.listEndpointProbeResults({
+      endpointId: requiredValue(args, "--endpoint-id", "probe-results requires --endpoint-id endpoint_..."),
+      limit: numberFor(args, "--limit"),
+    }), null, 2));
+    return;
+  }
+
+  if (command === "healing-rule") {
+    console.log(JSON.stringify(await client.createHealingRule({
+      targetId: requiredValue(args, "--endpoint-id", "healing-rule requires --endpoint-id endpoint_..."),
+      name: valueFor(args, "--name"),
+      thresholdFailures: numberFor(args, "--after-failures"),
+      autofixEnabled: !hasFlag(args, "--no-autofix"),
+    }), null, 2));
+    return;
+  }
+
+  if (command === "incidents") {
+    console.log(JSON.stringify(await client.listEndpointIncidents({
+      ruleId: valueFor(args, "--rule-id"),
+      limit: numberFor(args, "--limit"),
+    }), null, 2));
+    return;
+  }
+
+  if (command === "fixes") {
+    const fixTaskId = valueFor(args, "--fix-task-id");
+    console.log(JSON.stringify(fixTaskId
+      ? await client.getFixTask(fixTaskId)
+      : await client.listFixTasks({
+          status: valueFor(args, "--status") as "open" | "delivered" | "resolved" | undefined,
+          limit: numberFor(args, "--limit"),
+        }), null, 2));
+    return;
+  }
+
+  if (command === "heal") {
+    const fixTaskId = requiredValue(args, "--fix-task-id", "heal requires --fix-task-id fix_...");
+    const started = await client.startSelfHealing({
+      fixTaskId,
+      request: { idempotencyKey: valueFor(args, "--idempotency-key") },
+    });
+    if (hasFlag(args, "--wait")) {
+      const completed = await client.waitForSelfHealing({
+        fixTaskId,
+        pollIntervalMs: numberFor(args, "--poll-ms"),
+        timeoutMs: numberFor(args, "--timeout-ms"),
+      });
+      console.log(JSON.stringify({ started, completed }, null, 2));
+      return;
+    }
+    console.log(JSON.stringify(started, null, 2));
     return;
   }
 
@@ -716,6 +797,13 @@ function printHelp(): void {
 Usage:
   npx preman-sdk init --api-key pm_live_...
   npx preman-sdk register --file endpoints.json --upstream https://api.example.com --intent "Auth endpoints"
+  npx preman-sdk monitor --endpoint-id endpoint_123 --interval-seconds 60 --expected-status 200
+  npx preman-sdk healing-rule --endpoint-id endpoint_123 --after-failures 3
+  npx preman-sdk probes
+  npx preman-sdk probe-results --endpoint-id endpoint_123
+  npx preman-sdk incidents
+  npx preman-sdk fixes --status open
+  npx preman-sdk heal --fix-task-id fix_123 --wait
   npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream https://api.example.com
   npx preman-sdk deploy --name "Auth MCP" --file endpoints.json --upstream-mode preman --dockerfile Dockerfile
   npx preman-sdk capabilities
@@ -765,6 +853,15 @@ Options:
   --timeout-ms              Timeout for --wait-upstream / upstream-hosting --wait
   --allow-local             Allow localhost/private upstreams for local-only previews
   --session-id              Reuse a playground session id
+  --endpoint-id             Saved API endpoint to monitor or inspect
+  --interval-seconds        Probe cadence from 30 to 3600 seconds (default: 60)
+  --timeout-seconds         Probe request timeout up to 30 seconds (default: 10)
+  --expected-status         Exact HTTP status that counts as healthy
+  --unattended-policy       read_only, allow_writes, or allow_destructive
+  --after-failures          Consecutive failures before a healing rule fires (default: 3)
+  --no-autofix              Create an alert-only rule without native self-healing
+  --fix-task-id             Fix task to inspect or heal
+  --wait                    Wait for a native repair to validate and finish
   --upstream-secret         Upstream API secret stored with a hosted MCP deploy
   --upstream-secret-env     Read upstream API secret from an environment variable
   --upstream-secret-type    bearer, api_key, basic, or custom
@@ -805,7 +902,7 @@ Upstream:
   Agents can import AGENT_UPSTREAM_HOSTING_GUIDE from preman-sdk/upstream-hosting.
 
 The CLI is the on-ramp. Use the hosted workspace at https://app.preman.live
-to see customer tokens, revoke access, inspect audit logs, and review agent activity.
+to watch endpoint health, inspect incidents, and follow repairs through validation and PR creation.
 `);
 }
 
