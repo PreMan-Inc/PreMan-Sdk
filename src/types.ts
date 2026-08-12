@@ -250,6 +250,13 @@ export type GithubIntegration = {
   github_installation_id?: number | null;
   credential_kind?: "pat" | "github_app" | null;
   github_account_login?: string | null;
+  last_commit_sha?: string | null;
+  baseline_published_at?: string | null;
+  workspace_id?: string | null;
+  simulation_mode?: GithubSimulationMode;
+  simulation_log_connector_id?: string | null;
+  simulation_observation_window_days?: GithubSimulationObservationWindowDays;
+  simulation_fallback_policy?: GithubSimulationFallbackPolicy;
 };
 
 export type GithubIntegrationRemovalResponse = {
@@ -279,8 +286,16 @@ export type ListGithubCommitsRequest = {
 };
 
 export type GithubSimulationStatus = "queued" | "running" | "succeeded" | "failed";
+export type GithubSimulationTerminalStatus = Extract<
+  GithubSimulationStatus,
+  "succeeded" | "failed"
+>;
 export type GithubSimulationTrigger = "webhook" | "manual";
 export type GithubSimulationMode = "contract_synthetic" | "observed_behavior";
+export type GithubSimulationEffectiveMode = GithubSimulationMode | "unavailable";
+export type GithubSimulationObservationWindowDays = 7 | 14 | 30;
+export type GithubSimulationFallbackPolicy = "contract_synthetic" | "require_observed";
+export type GithubSimulationVerdict = "green" | "impact_detected" | "inconclusive" | "failed";
 
 export type GithubSimulationError = {
   code: string;
@@ -305,7 +320,7 @@ export type GithubSimulationRuntimeEvidence = {
 };
 
 export type GithubSimulationSummary = Record<string, unknown> & {
-  verdict?: "green" | "impact_detected" | "inconclusive" | "failed";
+  verdict?: GithubSimulationVerdict;
   green?: boolean;
   commit_sha?: string;
   runtime_target?: "configured_environment" | "verified_candidate_environment";
@@ -366,6 +381,105 @@ export type StartGithubSimulationRequest = {
   ref?: string;
   /** Exact 40-character Git commit SHA to simulate. */
   commitSha?: string;
+  request?: RequestOptions;
+};
+
+export type GetGithubSimulationRequest = {
+  integrationId: string;
+  runId: string;
+  request?: RequestOptions;
+};
+
+export type GithubWorkspaceSimulationIntegration = {
+  id: string;
+  workspace_id: string;
+  repo_url: string;
+};
+
+export type GithubWorkspaceSimulationReceipt =
+  | {
+      integration: GithubWorkspaceSimulationIntegration;
+      run: GithubSimulationRun;
+    }
+  | {
+      integration: null;
+      run: null;
+    };
+
+export type GetLatestWorkspaceGithubSimulationRequest = {
+  /** Workbench workspace used to scope the signed-push receipt. */
+  workspaceId: string;
+  request?: RequestOptions;
+};
+
+export type GithubSimulationEvidenceSource = {
+  id: string;
+  name: string;
+  type: "cloudwatch";
+  enabled: boolean;
+  healthy: boolean;
+  last_success_at: string | null;
+  last_observed_at: string | null;
+  lines_ingested_total: number;
+  interval_seconds: number;
+  selected: boolean;
+};
+
+export type GithubSimulationEligibility = {
+  eligible: boolean;
+  reason_code: string | null;
+  message: string;
+  project_id: string | null;
+  sources: GithubSimulationEvidenceSource[];
+};
+
+export type GithubSimulationPrivacyReceipt = {
+  redacted_before_persistence: boolean;
+  raw_requests_replayed: boolean;
+  aggregate_only: boolean;
+  k_anonymity_minimum: number | null;
+  minimum_distinct_requests: number;
+  anonymity_claim: "not_claimed";
+  maximum_scenarios: number;
+  cohort_and_journey_labels: string;
+  client_versions: string;
+  excluded_raw_fields: string[];
+};
+
+export type GithubSimulationBaseline = {
+  storage: "endpoint_definitions";
+  location: string;
+  commit_sha: string | null;
+  branch: string;
+  published_at: string | null;
+  endpoint_count: number;
+  status: "current" | "empty" | "identity_unavailable" | "not_published";
+};
+
+export type GithubSimulationPolicy = {
+  integration_id: string;
+  requested_mode: GithubSimulationMode;
+  effective_mode: GithubSimulationEffectiveMode;
+  observation_window_days: GithubSimulationObservationWindowDays;
+  fallback_policy: GithubSimulationFallbackPolicy;
+  log_connector_id: string | null;
+  eligibility: GithubSimulationEligibility;
+  privacy: GithubSimulationPrivacyReceipt;
+  baseline: GithubSimulationBaseline;
+};
+
+export type GetGithubSimulationPolicyRequest = {
+  integrationId: string;
+  request?: RequestOptions;
+};
+
+export type UpdateGithubSimulationPolicyRequest = {
+  integrationId: string;
+  requestedMode?: GithubSimulationMode;
+  observationWindowDays?: GithubSimulationObservationWindowDays;
+  fallbackPolicy?: GithubSimulationFallbackPolicy;
+  /** Set to null to clear the selected CloudWatch source. */
+  logConnectorId?: string | null;
   request?: RequestOptions;
 };
 

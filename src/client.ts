@@ -37,7 +37,12 @@ import {
   type GithubIntegration,
   type GithubIntegrationRemovalResponse,
   type GithubSimulationListResponse,
+  type GithubSimulationPolicy,
   type GithubSimulationRun,
+  type GithubWorkspaceSimulationReceipt,
+  type GetGithubSimulationPolicyRequest,
+  type GetGithubSimulationRequest,
+  type GetLatestWorkspaceGithubSimulationRequest,
   type GetUpstreamHostingStatusRequest,
   type HostedMcpInstallSnippet,
   type GetHostedMcpResponse,
@@ -81,6 +86,7 @@ import {
   type StartSelfHealingResponse,
   type StartUpstreamOAuthRequest,
   type TokenMetadata,
+  type UpdateGithubSimulationPolicyRequest,
   type UpstreamHostingRecord,
   type UpstreamOAuthProviderConfig,
   type UpstreamOAuthStartResponse,
@@ -417,6 +423,16 @@ export class PremanClient {
     );
   }
 
+  /** Read one durable simulation, including terminal evidence and signed-push identity. */
+  async getGithubSimulation(request: GetGithubSimulationRequest): Promise<GithubSimulationRun> {
+    requireString(request.integrationId, "integrationId");
+    requireString(request.runId, "runId");
+    return this.request<GithubSimulationRun>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/simulations/${encodeURIComponent(request.runId)}`,
+      { method: "GET", request: request.request },
+    );
+  }
+
   /** Queue a manual simulation; GitHub credentials remain managed by PreMan. */
   async startGithubSimulation(
     request: StartGithubSimulationRequest,
@@ -434,6 +450,60 @@ export class PremanClient {
         ...(Object.keys(body).length ? { body } : {}),
         request: request.request,
       },
+    );
+  }
+
+  /** Return the newest signed-push simulation receipt for a Workbench workspace. */
+  async getLatestWorkspaceGithubSimulation(
+    request: GetLatestWorkspaceGithubSimulationRequest,
+  ): Promise<GithubWorkspaceSimulationReceipt> {
+    requireString(request.workspaceId, "workspaceId");
+    return this.request<GithubWorkspaceSimulationReceipt>(
+      "/integrations/github/workspace-simulation/latest",
+      {
+        method: "GET",
+        request: {
+          ...request.request,
+          headers: {
+            ...request.request?.headers,
+            "X-Workspace-Id": request.workspaceId,
+          },
+        },
+      },
+    );
+  }
+
+  /** Read the repository's selected simulation evidence policy and eligibility. */
+  async getGithubSimulationPolicy(
+    request: GetGithubSimulationPolicyRequest,
+  ): Promise<GithubSimulationPolicy> {
+    requireString(request.integrationId, "integrationId");
+    return this.request<GithubSimulationPolicy>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/simulation-policy`,
+      { method: "GET", request: request.request },
+    );
+  }
+
+  /** Update the repository's privacy-safe simulation evidence policy. */
+  async updateGithubSimulationPolicy(
+    request: UpdateGithubSimulationPolicyRequest,
+  ): Promise<GithubSimulationPolicy> {
+    requireString(request.integrationId, "integrationId");
+    if (request.logConnectorId !== undefined && request.logConnectorId !== null) {
+      requireString(request.logConnectorId, "logConnectorId");
+    }
+    const body = omitUndefined({
+      requested_mode: request.requestedMode,
+      observation_window_days: request.observationWindowDays,
+      fallback_policy: request.fallbackPolicy,
+      log_connector_id: request.logConnectorId,
+    });
+    if (Object.keys(body).length === 0) {
+      throw new PremanConfigError("Provide at least one simulation policy field.");
+    }
+    return this.request<GithubSimulationPolicy>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/simulation-policy`,
+      { method: "PATCH", body, request: request.request },
     );
   }
 

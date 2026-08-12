@@ -444,6 +444,203 @@ test("listGithubSimulations sends pagination and returns the typed run envelope"
   assert.equal(result.runs[0].commit_sha, sha);
 });
 
+test("getGithubSimulation returns signed webhook identity and terminal runtime evidence", async () => {
+  const sha = "d".repeat(40);
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      assert.equal(
+        String(url),
+        "https://api.preman.live/integrations/github/integration%2Fid/simulations/run%2Fid",
+      );
+      assert.equal(init.method, "GET");
+      return jsonResponse({
+        id: "run/id",
+        integration_id: "integration/id",
+        status: "succeeded",
+        trigger: "webhook",
+        ref: "refs/heads/main",
+        branch: "main",
+        commit_sha: sha,
+        before_sha: "c".repeat(40),
+        simulation_mode: "contract_synthetic",
+        baseline_commit_sha: "c".repeat(40),
+        github_delivery_id: "delivery-123",
+        attempt_count: 1,
+        summary: {
+          verdict: "green",
+          evidence: {
+            runtime: {
+              planned: 1,
+              executed: 1,
+              passed: 1,
+              failed: 0,
+              unavailable: 0,
+              coverage_complete: true,
+              candidate_verified: true,
+              attestation: { verified: 1, missing: 0, mismatched: 0 },
+            },
+          },
+        },
+        steps: [],
+        error: null,
+        created_at: "2026-08-12T12:00:00Z",
+        started_at: "2026-08-12T12:00:01Z",
+        finished_at: "2026-08-12T12:00:02Z",
+      });
+    },
+  });
+
+  const result = await client.getGithubSimulation({
+    integrationId: "integration/id",
+    runId: "run/id",
+  });
+  assert.equal(result.trigger, "webhook");
+  assert.equal(result.github_delivery_id, "delivery-123");
+  assert.equal(result.status, "succeeded");
+  assert.equal(result.finished_at, "2026-08-12T12:00:02Z");
+  assert.equal(result.summary.evidence.runtime.attestation.verified, 1);
+});
+
+test("getLatestWorkspaceGithubSimulation scopes the signed-push receipt automatically", async () => {
+  const sha = "e".repeat(40);
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      assert.equal(
+        String(url),
+        "https://api.preman.live/integrations/github/workspace-simulation/latest",
+      );
+      assert.equal(init.method, "GET");
+      assert.equal(init.headers["X-Workspace-Id"], "workspace_123");
+      assert.equal(init.headers["X-Correlation-Id"], "correlation_123");
+      return jsonResponse({
+        integration: {
+          id: "integration_123",
+          workspace_id: "workspace_123",
+          repo_url: "https://github.com/acme/api",
+        },
+        run: {
+          id: "run_123",
+          integration_id: "integration_123",
+          status: "queued",
+          trigger: "webhook",
+          ref: "refs/heads/main",
+          branch: "main",
+          commit_sha: sha,
+          before_sha: null,
+          simulation_mode: "contract_synthetic",
+          baseline_commit_sha: null,
+          github_delivery_id: "delivery-123",
+          attempt_count: 0,
+          summary: {},
+          steps: [],
+          error: null,
+          created_at: "2026-08-12T12:00:00Z",
+          started_at: null,
+          finished_at: null,
+        },
+      });
+    },
+  });
+
+  const result = await client.getLatestWorkspaceGithubSimulation({
+    workspaceId: "workspace_123",
+    request: { headers: { "X-Correlation-Id": "correlation_123" } },
+  });
+  assert.equal(result.run.trigger, "webhook");
+  assert.equal(result.run.github_delivery_id, "delivery-123");
+});
+
+test("GitHub simulation policy methods map the typed evidence contract", async () => {
+  const calls = [];
+  const connectorId = "00000000-0000-4000-8000-000000000001";
+  const policy = {
+    integration_id: "integration_123",
+    requested_mode: "observed_behavior",
+    effective_mode: "observed_behavior",
+    observation_window_days: 14,
+    fallback_policy: "require_observed",
+    log_connector_id: connectorId,
+    eligibility: {
+      eligible: true,
+      reason_code: null,
+      message: "CloudWatch evidence is ready.",
+      project_id: "project_123",
+      sources: [{
+        id: connectorId,
+        name: "Production logs",
+        type: "cloudwatch",
+        enabled: true,
+        healthy: true,
+        last_success_at: "2026-08-12T12:00:00Z",
+        last_observed_at: "2026-08-12T11:59:00Z",
+        lines_ingested_total: 42,
+        interval_seconds: 300,
+        selected: true,
+      }],
+    },
+    privacy: {
+      redacted_before_persistence: true,
+      raw_requests_replayed: false,
+      aggregate_only: true,
+      k_anonymity_minimum: null,
+      minimum_distinct_requests: 5,
+      anonymity_claim: "not_claimed",
+      maximum_scenarios: 50,
+      cohort_and_journey_labels: "server_secret_hmac_sha256_v1",
+      client_versions: "major_minor_bucket",
+      excluded_raw_fields: ["body", "headers"],
+    },
+    baseline: {
+      storage: "endpoint_definitions",
+      location: "repo endpoint inventory",
+      commit_sha: "f".repeat(40),
+      branch: "main",
+      published_at: "2026-08-12T12:00:00Z",
+      endpoint_count: 4,
+      status: "current",
+    },
+  };
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse(policy);
+    },
+  });
+
+  const current = await client.getGithubSimulationPolicy({ integrationId: "integration/id" });
+  const changed = await client.updateGithubSimulationPolicy({
+    integrationId: "integration/id",
+    requestedMode: "observed_behavior",
+    observationWindowDays: 14,
+    fallbackPolicy: "require_observed",
+    logConnectorId: connectorId,
+  });
+
+  assert.equal(
+    calls[0].url,
+    "https://api.preman.live/integrations/github/integration%2Fid/simulation-policy",
+  );
+  assert.equal(calls[0].init.method, "GET");
+  assert.equal(calls[1].init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    requested_mode: "observed_behavior",
+    observation_window_days: 14,
+    fallback_policy: "require_observed",
+    log_connector_id: connectorId,
+  });
+  assert.equal(current.eligibility.sources[0].healthy, true);
+  assert.equal(changed.baseline.status, "current");
+
+  await assert.rejects(
+    () => client.updateGithubSimulationPolicy({ integrationId: "integration_123" }),
+    (error) => error instanceof PremanConfigError && /at least one/.test(error.message),
+  );
+  assert.equal(calls.length, 2);
+});
+
 test("startGithubSimulation maps ref and commitSha without exposing GitHub credentials", async () => {
   const calls = [];
   const sha = "c".repeat(40);
