@@ -119,6 +119,35 @@ Probe credentials are encrypted at rest and only their header names are returned
 
 Open [app.preman.live](https://app.preman.live) to watch endpoint health, investigate incidents, and follow each repair through validation and PR creation.
 
+### Endpoint health aggregates and dependencies
+
+Use the project-scoped Pulse APIs for custom health views and evidence-backed
+blast-radius analysis:
+
+```ts
+const health = await preman.listEndpointHealth({
+  projectId: "project_123",
+  window: "24h",
+  statuses: ["failed", "error"],
+  sort: "error_rate",
+  limit: 50,
+});
+
+const metrics = await preman.getEndpointHealthMetrics({
+  projectId: health.projectId,
+  window: "24h",
+  endpointKey: health.endpoints[0]?.endpointKey,
+});
+
+const dependencies = await preman.getEndpointDependencies({
+  projectId: health.projectId,
+});
+```
+
+Dependency edges mean `source` depends on `target`. They come from explicit
+collection declarations or stored endpoint-edge evidence; PreMan does not infer
+them from route names or shared trace IDs.
+
 ## Hosted MCP and Agent Security
 
 PreMan can also expose registered APIs as hosted MCP servers with scoped consumer tokens, policy controls, and audit logs. This remains supported for teams that need to secure agent access, but it is no longer the SDK's primary workflow.
@@ -693,6 +722,9 @@ PREMAN_APP_URL=https://app.preman.live
 
 Self-healing endpoint workflow:
 
+- `listEndpointHealth()` -> lists project-scoped endpoint health aggregates and observations
+- `getEndpointHealthMetrics()` -> reads health totals, latency percentiles, and sparkline buckets
+- `getEndpointDependencies()` -> reads evidence-backed directed dependencies for blast-radius analysis
 - `configureEndpointProbe()` / `listEndpointProbes()` -> continuously exercise saved API endpoints
 - `listEndpointProbeResults()` -> inspect status, latency, and failure details
 - `createHealingRule()` -> trigger incidents and native autofix after consecutive failures or an error-rate threshold
