@@ -247,6 +247,10 @@ export type {
   AlertRuleType,
   AlertTargetKind,
   FixTask,
+  FixTaskAgentActivityItem,
+  FixTaskDispatchActivityItem,
+  FixTaskDispatchActivityState,
+  FixTaskDispatchProgress,
   FixTaskStatus,
   HealingRule,
 } from "./types.js";

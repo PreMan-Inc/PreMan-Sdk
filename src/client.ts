@@ -62,6 +62,7 @@ import {
   type EndpointIncident,
   type EndpointProbe,
   type FixTask,
+  type FixTaskDispatchProgress,
   type HealingRule,
   type ImportFromDocsRequest,
   type ImportRemoteMcpRequest,
@@ -472,7 +473,7 @@ export class PremanClient {
     );
     const rawConversation = objectOrNullAt(response, "conversation");
     return {
-      fixTask: objectAt(response, "fix_task"),
+      fixTask: normalizeFixTask(objectAt(response, "fix_task")),
       dispatch: objectOrNullAt(response, "dispatch"),
       artifact: objectAt(response, "artifact"),
       alreadyExisted: response["already_existed"] === true,
@@ -1370,6 +1371,7 @@ function normalizeEndpointIncident(raw: Record<string, unknown>): EndpointIncide
 }
 
 function normalizeFixTask(raw: Record<string, unknown>): FixTask {
+  const dispatchProgress = normalizeFixTaskDispatchProgress(raw["dispatch_result"]);
   return {
     id: stringAt(raw, "id"),
     workspaceId: nullableStringAt(raw, "workspace_id"),
@@ -1387,6 +1389,13 @@ function normalizeFixTask(raw: Record<string, unknown>): FixTask {
     dispatchStatus: nullableStringAt(raw, "dispatch_status"),
     dispatchStage: nullableStringAt(raw, "dispatch_stage"),
     dispatchResult: raw["dispatch_result"],
+    dispatchProgress,
+    dispatchActivity: (dispatchProgress?.activity ?? []).map((item) => ({
+      id: item.id,
+      label: item.label,
+      state: item.state,
+      ...(item.elapsed_ms !== undefined ? { elapsedMs: item.elapsed_ms } : {}),
+    })),
     dispatchAttempts: numberAt(raw, "dispatch_attempts"),
     dispatchedAt: nullableStringAt(raw, "dispatched_at"),
     deliveredAt: nullableStringAt(raw, "delivered_at"),
@@ -1394,6 +1403,62 @@ function normalizeFixTask(raw: Record<string, unknown>): FixTask {
     createdAt: nullableStringAt(raw, "created_at"),
     updatedAt: nullableStringAt(raw, "updated_at"),
     raw,
+  };
+}
+
+function normalizeFixTaskDispatchProgress(
+  dispatchResult: unknown,
+): FixTaskDispatchProgress | null {
+  if (!dispatchResult || typeof dispatchResult !== "object" || Array.isArray(dispatchResult)) {
+    return null;
+  }
+  const result = dispatchResult as Record<string, unknown>;
+  const progressValue = result["progress"];
+  if (!progressValue || typeof progressValue !== "object" || Array.isArray(progressValue)) {
+    return null;
+  }
+  const progress = progressValue as Record<string, unknown>;
+  const seenActivityIds = new Set<string>();
+  const activity = Array.isArray(progress["activity"])
+    ? progress["activity"]
+        .slice(0, 24)
+        .flatMap((value): NonNullable<FixTaskDispatchProgress["activity"]> => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+          const item = value as Record<string, unknown>;
+          const id = typeof item["id"] === "string" ? item["id"].trim() : "";
+          const label = typeof item["label"] === "string"
+            ? item["label"]
+                .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim()
+            : "";
+          const state = item["state"];
+          if (
+            !/^[A-Za-z0-9_.:-]{1,120}$/.test(id)
+            || !label
+            || label.length > 160
+            || (state !== "active" && state !== "complete")
+            || seenActivityIds.has(id)
+          ) return [];
+          seenActivityIds.add(id);
+          const elapsed = item["elapsed_ms"];
+          return [{
+            id,
+            label,
+            state,
+            ...(typeof elapsed === "number"
+              && Number.isInteger(elapsed)
+              && elapsed >= 0
+              && elapsed <= 86_400_000
+              ? { elapsed_ms: elapsed }
+              : {}),
+          }];
+        })
+        .slice(0, 6)
+    : undefined;
+  return {
+    ...progress,
+    ...(activity ? { activity } : {}),
   };
 }
 

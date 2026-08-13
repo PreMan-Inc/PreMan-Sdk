@@ -656,6 +656,28 @@ agent side panel or the full chat view. Retrying an active handoff returns the
 same task and conversation rather than creating another chat. Auto-PR may open
 a review pull request, but the handoff never merges or deploys it.
 
+While the repair is running, `getFixTask()` exposes up to six short activity
+lines from `dispatch_result.progress.activity` as a camel-cased
+`dispatchActivity` view. The typed wire shape remains available through
+`dispatchProgress.activity` with `elapsed_ms` intact:
+
+```ts
+const task = await preman.getFixTask(handoff.fixTask.id);
+
+for (const item of task.dispatchActivity ?? []) {
+  console.log(item.state, item.label, item.elapsedMs);
+}
+
+console.log(task.dispatchProgress?.activity?.[0]?.elapsed_ms);
+```
+
+Each item has an `id`, a safe display `label`, an `active` or `complete` state,
+and optional `elapsedMs`. Activity is temporary UI status, not agent reasoning
+or an execution transcript. PreMan does not expose raw commands, command
+output, or secrets through this field. The SDK retains the original
+`dispatchResult` for older integrations and returns an empty activity list for
+legacy scalar progress.
+
 ## Secret Handling
 
 Avoid putting upstream or consumer secrets in shell history. Use environment-backed secret providers:
