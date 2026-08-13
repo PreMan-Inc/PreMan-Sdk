@@ -148,6 +148,13 @@ Dependency edges mean `source` depends on `target`. They come from explicit
 collection declarations or stored endpoint-edge evidence; PreMan does not infer
 them from route names or shared trace IDs.
 
+For a current-health summary, use the latest available result for each endpoint
+(including `observations.probes[].lastOk`) instead of treating every failure in
+the selected range as still open. Present aggregate failures as **failed checks**
+inside the response's `start`/`end` window; when run-level history shows a newer
+successful check for the same endpoint, mark the earlier failure resolved. Keep
+the returned window visible beside any count derived from it.
+
 ## Hosted MCP and Agent Security
 
 PreMan can also expose registered APIs as hosted MCP servers with scoped consumer tokens, policy controls, and audit logs. This remains supported for teams that need to secure agent access, but it is no longer the SDK's primary workflow.
