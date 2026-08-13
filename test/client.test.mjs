@@ -364,6 +364,87 @@ test("removeGithubIntegration sends an encoded DELETE and returns cleanup counts
   });
 });
 
+test("getFixTask normalizes bounded safe agent activity and preserves the raw result", async () => {
+  const activity = [
+    { id: "inspect", label: "Inspecting API routes", state: "complete", elapsed_ms: 420 },
+    { id: "patch", label: "Updating compatibility handler", state: "active" },
+    { id: "invalid", label: "Hidden invalid state", state: "thinking" },
+    { id: "inspect", label: "Duplicate activity", state: "active" },
+    { id: "bad id", label: "Unsafe id", state: "active" },
+    { id: "controls", label: "Running\u0000  tests", state: "complete" },
+    ...Array.from({ length: 6 }, (_, index) => ({
+      id: `extra-${index}`,
+      label: `Safe activity ${index}`,
+      state: "complete",
+    })),
+  ];
+  const dispatchResult = {
+    progress: { message: "Repairing", activity },
+    summary: "Compatibility repair underway",
+  };
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => jsonResponse({
+      id: "fix_123",
+      source_kind: "chat",
+      source_id: "simulation_123",
+      status: "delivered",
+      package: {},
+      dispatch_result: dispatchResult,
+      dispatch_attempts: 1,
+    }),
+  });
+
+  const task = await client.getFixTask("fix_123");
+
+  assert.deepEqual(task.dispatchResult, dispatchResult);
+  assert.equal(task.dispatchProgress.message, "Repairing");
+  assert.deepEqual(task.dispatchProgress.activity[0], {
+    id: "inspect",
+    label: "Inspecting API routes",
+    state: "complete",
+    elapsed_ms: 420,
+  });
+  assert.equal(task.dispatchActivity.length, 6);
+  assert.deepEqual(task.dispatchActivity[0], {
+    id: "inspect",
+    label: "Inspecting API routes",
+    state: "complete",
+    elapsedMs: 420,
+  });
+  assert.deepEqual(task.dispatchActivity[1], {
+    id: "patch",
+    label: "Updating compatibility handler",
+    state: "active",
+  });
+  assert.equal(task.dispatchActivity.some((item) => item.id === "invalid"), false);
+  assert.equal(task.dispatchActivity.some((item) => item.label === "Duplicate activity"), false);
+  assert.equal(task.dispatchActivity.some((item) => item.id === "bad id"), false);
+  assert.equal(task.dispatchActivity.find((item) => item.id === "controls")?.label, "Running tests");
+});
+
+test("getFixTask keeps legacy scalar progress backward compatible", async () => {
+  const dispatchResult = { progress: "Agent is working" };
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => jsonResponse({
+      id: "fix_legacy",
+      source_kind: "chat",
+      source_id: "simulation_legacy",
+      status: "open",
+      package: {},
+      dispatch_result: dispatchResult,
+      dispatch_attempts: 0,
+    }),
+  });
+
+  const task = await client.getFixTask("fix_legacy");
+
+  assert.deepEqual(task.dispatchResult, dispatchResult);
+  assert.equal(task.dispatchProgress, null);
+  assert.deepEqual(task.dispatchActivity, []);
+});
+
 test("handoffGithubSimulation returns the durable repair conversation", async () => {
   const calls = [];
   const client = new PremanClient({
@@ -371,7 +452,19 @@ test("handoffGithubSimulation returns the durable repair conversation", async ()
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
       return jsonResponse({
-        fix_task: { id: "fix_123", status: "delivered" },
+        fix_task: {
+          id: "fix_123",
+          source_kind: "chat",
+          source_id: "simulation_123",
+          status: "delivered",
+          package: {},
+          dispatch_result: {
+            progress: {
+              activity: [{ id: "inspect", label: "Inspecting API routes", state: "active" }],
+            },
+          },
+          dispatch_attempts: 1,
+        },
         dispatch: { run_id: "agent_run_123", status: "queued" },
         artifact: { type: "handoff", fix_task_id: "fix_123" },
         already_existed: false,
@@ -415,6 +508,7 @@ test("handoffGithubSimulation returns the durable repair conversation", async ()
   assert.equal(result.conversation.taskInProgress, true);
   assert.equal(result.conversation.messages[0].createdAt, "2026-08-13T12:00:01Z");
   assert.equal(result.conversation.messages[0].artifacts[0].fix_task_id, "fix_123");
+  assert.equal(result.fixTask.dispatchActivity[0].label, "Inspecting API routes");
   assert.equal(result.raw.conversation.id, "conversation_123");
 });
 

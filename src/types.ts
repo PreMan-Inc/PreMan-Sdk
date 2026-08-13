@@ -301,6 +301,29 @@ export type SelfHealingStage =
   | "failed"
   | string;
 
+export type FixTaskDispatchActivityState = "active" | "complete";
+
+/** One short, safe activity line reported by a running repair agent. */
+export type FixTaskDispatchActivityItem = {
+  id: string;
+  label: string;
+  state: FixTaskDispatchActivityState;
+  elapsed_ms?: number;
+};
+
+/** Camel-cased SDK view of one temporary repair activity line. */
+export type FixTaskAgentActivityItem = {
+  id: string;
+  label: string;
+  state: FixTaskDispatchActivityState;
+  elapsedMs?: number;
+};
+
+/** Structured progress may include at most six temporary activity lines. */
+export type FixTaskDispatchProgress = Record<string, unknown> & {
+  activity?: FixTaskDispatchActivityItem[];
+};
+
 export type FixTask = {
   id: string;
   workspaceId?: string | null;
@@ -317,7 +340,12 @@ export type FixTask = {
   dispatchRunUrl?: string | null;
   dispatchStatus?: string | null;
   dispatchStage?: SelfHealingStage | null;
+  /** Original server payload, retained for backward compatibility. */
   dispatchResult?: unknown;
+  /** Structured progress when the server supplied an object payload. */
+  dispatchProgress?: FixTaskDispatchProgress | null;
+  /** Validated, bounded activity lines; empty for older task responses. */
+  dispatchActivity?: FixTaskAgentActivityItem[];
   dispatchAttempts: number;
   dispatchedAt?: string | null;
   deliveredAt?: string | null;
@@ -437,7 +465,7 @@ export type GithubSimulationHandoffConversation = {
 
 /** Safe, server-authored repair handoff for a completed GitHub simulation. */
 export type GithubSimulationHandoffResponse = {
-  fixTask: Record<string, unknown>;
+  fixTask: FixTask;
   dispatch: Record<string, unknown> | null;
   artifact: Record<string, unknown>;
   alreadyExisted: boolean;
