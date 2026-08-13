@@ -482,6 +482,21 @@ test("getGithubSimulation returns signed webhook identity and terminal runtime e
             },
           },
         },
+        runtime_scenarios: [
+          {
+            id: "probe-1",
+            kind: "probe",
+            name: "GET /health",
+            scenario_type: null,
+            method: "GET",
+            path: "/health",
+            outcome: "passed",
+            response_status: 200,
+            latency_ms: 18,
+            failure_reason: null,
+            build_attestation: "verified",
+          },
+        ],
         steps: [],
         error: null,
         created_at: "2026-08-12T12:00:00Z",
@@ -500,6 +515,19 @@ test("getGithubSimulation returns signed webhook identity and terminal runtime e
   assert.equal(result.status, "succeeded");
   assert.equal(result.finished_at, "2026-08-12T12:00:02Z");
   assert.equal(result.summary.evidence.runtime.attestation.verified, 1);
+  assert.deepEqual(result.runtime_scenarios[0], {
+    id: "probe-1",
+    kind: "probe",
+    name: "GET /health",
+    scenario_type: null,
+    method: "GET",
+    path: "/health",
+    outcome: "passed",
+    response_status: 200,
+    latency_ms: 18,
+    failure_reason: null,
+    build_attestation: "verified",
+  });
 });
 
 test("getLatestWorkspaceGithubSimulation scopes the signed-push receipt automatically", async () => {

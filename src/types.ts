@@ -308,6 +308,24 @@ export type GithubRuntimeAttestation = {
   mismatched: number;
 };
 
+export type GithubRuntimeScenarioKind = "probe" | "auto_test_case" | "auto_test_suite";
+export type GithubRuntimeScenarioOutcome = "passed" | "failed" | "unavailable" | "error";
+export type GithubRuntimeBuildAttestation = "verified" | "mismatch" | "missing" | "unverified";
+
+export type GithubRuntimeScenarioResult = {
+  id: string;
+  kind: GithubRuntimeScenarioKind;
+  name: string;
+  scenario_type: string | null;
+  method: string | null;
+  path: string | null;
+  outcome: GithubRuntimeScenarioOutcome;
+  response_status: number | null;
+  latency_ms: number | null;
+  failure_reason: string | null;
+  build_attestation: GithubRuntimeBuildAttestation;
+};
+
 export type GithubSimulationRuntimeEvidence = {
   planned: number;
   executed: number;
@@ -357,6 +375,11 @@ export type GithubSimulationRun = {
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;
+};
+
+export type GithubSimulationDetail = GithubSimulationRun & {
+  /** Safe per-request evidence; request bodies, headers, and credentials are never returned. */
+  runtime_scenarios: GithubRuntimeScenarioResult[];
 };
 
 export type GithubSimulationListResponse = {
