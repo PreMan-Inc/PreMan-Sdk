@@ -364,6 +364,80 @@ test("removeGithubIntegration sends an encoded DELETE and returns cleanup counts
   });
 });
 
+test("handoffGithubSimulation returns the durable repair conversation", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        fix_task: { id: "fix_123", status: "delivered" },
+        dispatch: { run_id: "agent_run_123", status: "queued" },
+        artifact: { type: "handoff", fix_task_id: "fix_123" },
+        already_existed: false,
+        conversation: {
+          id: "conversation_123",
+          workspace_id: "workspace_789",
+          title: "Repair API contract changes in ced99ad1",
+          archived: false,
+          task_in_progress: true,
+          created_at: "2026-08-13T12:00:00Z",
+          updated_at: "2026-08-13T12:00:01Z",
+          messages: [{
+            id: "message_123",
+            role: "assistant",
+            content: "Dispatched to Codex.",
+            artifacts: [{ type: "handoff", fix_task_id: "fix_123" }],
+            provider: "openai",
+            model: "gpt-5",
+            created_at: "2026-08-13T12:00:01Z",
+          }],
+        },
+      });
+    },
+  });
+
+  const result = await client.handoffGithubSimulation({
+    integrationId: "integration/123",
+    runId: "run/456",
+    workspaceId: "workspace_789",
+  });
+
+  assert.equal(
+    calls[0].url,
+    "https://api.preman.live/integrations/github/integration%2F123/simulations/run%2F456/handoff",
+  );
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal("body" in calls[0].init, false);
+  assert.equal(calls[0].init.headers["x-workspace-id"], "workspace_789");
+  assert.equal(result.conversation.id, "conversation_123");
+  assert.equal(result.conversation.workspaceId, "workspace_789");
+  assert.equal(result.conversation.taskInProgress, true);
+  assert.equal(result.conversation.messages[0].createdAt, "2026-08-13T12:00:01Z");
+  assert.equal(result.conversation.messages[0].artifacts[0].fix_task_id, "fix_123");
+  assert.equal(result.raw.conversation.id, "conversation_123");
+});
+
+test("handoffGithubSimulation tolerates an older response without a conversation", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => jsonResponse({
+      fix_task: { id: "fix_123" },
+      dispatch: null,
+      artifact: { type: "handoff" },
+      already_existed: true,
+    }),
+  });
+
+  const result = await client.handoffGithubSimulation({
+    integrationId: "integration_123",
+    runId: "run_456",
+  });
+
+  assert.equal(result.conversation, null);
+  assert.equal(result.alreadyExisted, true);
+});
+
 test("listGithubCommits uses the server-managed connection and forwards request options", async () => {
   const sha = "a".repeat(40);
   const client = new PremanClient({

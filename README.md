@@ -631,6 +631,31 @@ await preman.deployMcp({
 
 For write operations that may be retried, pass an idempotency key. The client includes `X-Request-Id` on every request so API logs, CI logs, and hosted audit events can be correlated.
 
+### GitHub simulation repair handoff
+
+Hand a completed API-contract simulation to the coding agent connected to that
+repository. The request contains no repair prompt: PreMan builds the task from
+the stored simulation evidence and verifies the repository binding.
+
+```ts
+const handoff = await preman.handoffGithubSimulation({
+  integrationId: "github-integration-id",
+  runId: "completed-simulation-run-id",
+  workspaceId: "workspace-id", // optional
+  request: { idempotencyKey: crypto.randomUUID() },
+});
+
+console.log(handoff.fixTask, handoff.dispatch);
+console.log(handoff.conversation?.id, handoff.conversation?.messages);
+console.log(handoff.conversation?.taskInProgress);
+```
+
+The returned `conversation` is the persisted workbench chat for the repair. It
+appears in the dashboard's **Recent** list and can be continued in either the
+agent side panel or the full chat view. Retrying an active handoff returns the
+same task and conversation rather than creating another chat. Auto-PR may open
+a review pull request, but the handoff never merges or deploys it.
+
 ## Secret Handling
 
 Avoid putting upstream or consumer secrets in shell history. Use environment-backed secret providers:
