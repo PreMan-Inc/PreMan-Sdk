@@ -472,10 +472,53 @@ export type GithubSimulationRuntimeEvidence = {
   attestation: GithubRuntimeAttestation;
 };
 
+/** One changed leaf in the published-baseline versus candidate API contract. */
+export type GithubApiContractFieldDiff = {
+  field: string;
+  before: unknown;
+  after: unknown;
+  before_present: boolean;
+  after_present: boolean;
+  before_truncated?: boolean;
+  after_truncated?: boolean;
+};
+
+/** Endpoint-level source and field evidence produced by a GitHub simulation. */
+export type GithubApiContractImpact = {
+  change_type: "new" | "modified" | "removed";
+  method: string;
+  path: string;
+  file: string | null;
+  /** Added for newly computed runs; older persisted runs may not contain it. */
+  contract_diff?: GithubApiContractFieldDiff[];
+  contract_diff_truncated?: boolean;
+};
+
+/** Published contract revision used by a GitHub simulation run summary. */
+export type GithubSimulationRunBaseline = {
+  storage?: string;
+  location?: string;
+  commit_sha?: string | null;
+  branch?: string;
+  published_at?: string | null;
+  endpoint_count?: number;
+  fingerprint?: string;
+  status?: "current" | "empty" | "identity_unavailable" | "not_published" | "missing";
+};
+
 export type GithubSimulationSummary = Record<string, unknown> & {
   verdict?: GithubSimulationVerdict;
   green?: boolean;
   commit_sha?: string;
+  endpoints_scanned?: number;
+  baseline_endpoints?: number;
+  changes_total?: number;
+  new_endpoints?: number;
+  modified_endpoints?: number;
+  removed_endpoints?: number;
+  impact?: GithubApiContractImpact[];
+  impact_truncated?: boolean;
+  baseline?: GithubSimulationRunBaseline;
   runtime_target?: "configured_environment" | "verified_candidate_environment";
   runtime_coverage_complete?: boolean;
   candidate_runtime_verified?: boolean;
