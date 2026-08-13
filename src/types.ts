@@ -400,6 +400,52 @@ export type GithubIntegrationRemovalResponse = {
   endpoints_deactivated: number;
 };
 
+export type GithubSimulationHandoffRequest = {
+  /** Connected GitHub repository integration id. */
+  integrationId: string;
+  /** Completed simulation run id returned by Pulse. */
+  runId: string;
+  /** Optional workspace override. Omit to use the caller's default workspace. */
+  workspaceId?: string;
+  request?: RequestOptions;
+};
+
+export type GithubSimulationHandoffConversationMessage = {
+  id: string;
+  role: string;
+  content: string;
+  artifacts: Record<string, unknown>[];
+  provider: string | null;
+  model: string | null;
+  createdAt: string | null;
+  raw: Record<string, unknown>;
+};
+
+/** Durable workbench chat created for a simulation repair handoff. */
+export type GithubSimulationHandoffConversation = {
+  id: string;
+  workspaceId: string;
+  title: string;
+  archived: boolean;
+  /** True while the conversation's repair task is queued or running. */
+  taskInProgress: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  messages: GithubSimulationHandoffConversationMessage[];
+  raw: Record<string, unknown>;
+};
+
+/** Safe, server-authored repair handoff for a completed GitHub simulation. */
+export type GithubSimulationHandoffResponse = {
+  fixTask: Record<string, unknown>;
+  dispatch: Record<string, unknown> | null;
+  artifact: Record<string, unknown>;
+  alreadyExisted: boolean;
+  /** The persisted chat shown in the dashboard's Recent list. */
+  conversation: GithubSimulationHandoffConversation | null;
+  raw: Record<string, unknown>;
+};
+
 export type GithubCommitSummary = {
   sha: string;
   message: string;

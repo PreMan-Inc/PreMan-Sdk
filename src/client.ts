@@ -42,6 +42,9 @@ import {
   type GithubCommitListResponse,
   type GithubIntegration,
   type GithubIntegrationRemovalResponse,
+  type GithubSimulationHandoffConversation,
+  type GithubSimulationHandoffRequest,
+  type GithubSimulationHandoffResponse,
   type GithubSimulationDetail,
   type GithubSimulationListResponse,
   type GithubSimulationPolicy,
@@ -442,6 +445,42 @@ export class PremanClient {
       `/integrations/github/${encodeURIComponent(integrationId)}`,
       { method: "DELETE", request },
     );
+  }
+
+  /**
+   * Hand a completed, non-empty GitHub simulation diff to the configured coding agent.
+   * PreMan authors the repair instructions and persists the task as a normal workbench chat.
+   */
+  async handoffGithubSimulation(
+    request: GithubSimulationHandoffRequest,
+  ): Promise<GithubSimulationHandoffResponse> {
+    requireString(request.integrationId, "integrationId");
+    requireString(request.runId, "runId");
+    if (request.workspaceId !== undefined) requireString(request.workspaceId, "workspaceId");
+    const requestOptions = request.workspaceId
+      ? {
+          ...request.request,
+          headers: {
+            ...request.request?.headers,
+            "x-workspace-id": request.workspaceId,
+          },
+        }
+      : request.request;
+    const response = await this.request<Record<string, unknown>>(
+      `/integrations/github/${encodeURIComponent(request.integrationId)}/simulations/${encodeURIComponent(request.runId)}/handoff`,
+      { method: "POST", request: requestOptions },
+    );
+    const rawConversation = objectOrNullAt(response, "conversation");
+    return {
+      fixTask: objectAt(response, "fix_task"),
+      dispatch: objectOrNullAt(response, "dispatch"),
+      artifact: objectAt(response, "artifact"),
+      alreadyExisted: response["already_existed"] === true,
+      conversation: rawConversation
+        ? normalizeGithubSimulationHandoffConversation(rawConversation)
+        : null,
+      raw: response,
+    };
   }
 
   /** List recent commits using the repository's server-managed GitHub connection. */
@@ -1563,6 +1602,31 @@ function normalizeUpstreamOAuthStart(response: Record<string, unknown>): Upstrea
 function objectAt(value: Record<string, unknown>, key: string): Record<string, unknown> {
   const item = value[key];
   return item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+}
+
+function normalizeGithubSimulationHandoffConversation(
+  conversation: Record<string, unknown>,
+): GithubSimulationHandoffConversation {
+  return {
+    id: stringAt(conversation, "id"),
+    workspaceId: stringAt(conversation, "workspace_id"),
+    title: stringAt(conversation, "title"),
+    archived: conversation["archived"] === true,
+    taskInProgress: conversation["task_in_progress"] === true,
+    createdAt: nullableStringAt(conversation, "created_at"),
+    updatedAt: nullableStringAt(conversation, "updated_at"),
+    messages: arrayOfObjectsAt(conversation, "messages").map((message) => ({
+      id: stringAt(message, "id"),
+      role: stringAt(message, "role"),
+      content: stringAt(message, "content"),
+      artifacts: arrayOfObjectsAt(message, "artifacts"),
+      provider: nullableStringAt(message, "provider"),
+      model: nullableStringAt(message, "model"),
+      createdAt: nullableStringAt(message, "created_at"),
+      raw: message,
+    })),
+    raw: conversation,
+  };
 }
 
 function stringAt(value: Record<string, unknown>, key: string): string {
