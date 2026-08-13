@@ -36,6 +36,7 @@ import {
   type GithubCommitListResponse,
   type GithubIntegration,
   type GithubIntegrationRemovalResponse,
+  type GithubSimulationDetail,
   type GithubSimulationListResponse,
   type GithubSimulationPolicy,
   type GithubSimulationRun,
@@ -424,10 +425,10 @@ export class PremanClient {
   }
 
   /** Read one durable simulation, including terminal evidence and signed-push identity. */
-  async getGithubSimulation(request: GetGithubSimulationRequest): Promise<GithubSimulationRun> {
+  async getGithubSimulation(request: GetGithubSimulationRequest): Promise<GithubSimulationDetail> {
     requireString(request.integrationId, "integrationId");
     requireString(request.runId, "runId");
-    return this.request<GithubSimulationRun>(
+    return this.request<GithubSimulationDetail>(
       `/integrations/github/${encodeURIComponent(request.integrationId)}/simulations/${encodeURIComponent(request.runId)}`,
       { method: "GET", request: request.request },
     );
