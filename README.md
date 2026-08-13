@@ -672,11 +672,28 @@ console.log(task.dispatchProgress?.activity?.[0]?.elapsed_ms);
 ```
 
 Each item has an `id`, a safe display `label`, an `active` or `complete` state,
-and optional `elapsedMs`. Activity is temporary UI status, not agent reasoning
-or an execution transcript. PreMan does not expose raw commands, command
-output, or secrets through this field. The SDK retains the original
-`dispatchResult` for older integrations and returns an empty activity list for
-legacy scalar progress.
+and optional `elapsedMs`. The dashboard may place a temporary, collapsible
+excerpt beneath a status update when the selected coding agent emits commentary
+through its visible-output channel. For Codex, that source is its visible
+commentary/transcript event, not hidden reasoning. An admitted excerpt is newly
+shared into the user’s PreMan workspace; it should not be described as text the
+user had already seen in PreMan.
+
+Admission is fail-closed. A conservative safe-commentary allowlist accepts only
+short, status-like excerpts. Arbitrary prose is rejected, while reasoning events,
+prompt echoes, code, raw commands and output, absolute paths, and recognized
+credential patterns are excluded. Semantic activity such as “Running tests” or
+“Editing a file” remains the fallback when no excerpt is admitted. This narrow
+filter is a data-minimization boundary, not permission to put secrets into agent
+commentary.
+
+If a failed step has no specific admitted detail, the UI suppresses the generic
+no-detail failure note instead of inventing an excerpt. A terminal record is
+presented as completed rather than failed only when the agent exited with code
+`0`, returned a summary, and returned no error. The wire shape is unchanged:
+consumers should continue treating `label` as display-ready status text. The SDK
+retains the original `dispatchResult` for older integrations and returns an empty
+activity list for legacy scalar progress.
 
 ## Secret Handling
 
