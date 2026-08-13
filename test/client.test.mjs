@@ -469,6 +469,34 @@ test("getGithubSimulation returns signed webhook identity and terminal runtime e
         attempt_count: 1,
         summary: {
           verdict: "green",
+          changes_total: 1,
+          baseline: {
+            commit_sha: "c".repeat(40),
+            branch: "main",
+            endpoint_count: 12,
+            location: "repo endpoint inventory",
+            status: "current",
+          },
+          impact: [
+            {
+              change_type: "modified",
+              method: "POST",
+              path: "/v1/login",
+              file: "routes/auth.py",
+              contract_diff: [
+                {
+                  field: "response_schema.properties.token.type",
+                  before: "string",
+                  after: "integer",
+                  before_present: true,
+                  after_present: true,
+                  before_truncated: false,
+                  after_truncated: false,
+                },
+              ],
+              contract_diff_truncated: false,
+            },
+          ],
           evidence: {
             runtime: {
               planned: 1,
@@ -515,6 +543,17 @@ test("getGithubSimulation returns signed webhook identity and terminal runtime e
   assert.equal(result.status, "succeeded");
   assert.equal(result.finished_at, "2026-08-12T12:00:02Z");
   assert.equal(result.summary.evidence.runtime.attestation.verified, 1);
+  assert.equal(result.summary.baseline.commit_sha, "c".repeat(40));
+  assert.equal(result.summary.baseline.location, "repo endpoint inventory");
+  assert.deepEqual(result.summary.impact[0].contract_diff[0], {
+    field: "response_schema.properties.token.type",
+    before: "string",
+    after: "integer",
+    before_present: true,
+    after_present: true,
+    before_truncated: false,
+    after_truncated: false,
+  });
   assert.deepEqual(result.runtime_scenarios[0], {
     id: "probe-1",
     kind: "probe",
