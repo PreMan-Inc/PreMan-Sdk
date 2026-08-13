@@ -14,11 +14,17 @@ import {
   type CreateHealingRuleRequest,
   type DiscoverCapabilitiesRequest,
   type DiscoverCapabilitiesResponse,
+  type EndpointDependenciesResponse,
+  type EndpointHealthMetricsResponse,
+  type GetEndpointDependenciesRequest,
+  type GetEndpointHealthMetricsRequest,
   type GetAppResponse,
   type ImportMcpServerRequest,
   type ImportMcpServerResponse,
   type ListAppsResponse,
   type ListAppTemplatesResponse,
+  type ListEndpointHealthRequest,
+  type ListEndpointHealthResponse,
   type MintAppTokenRequest,
   type MintAppTokenResponse,
   type PremanAppMember,
@@ -172,6 +178,47 @@ export class PremanClient {
       dashboardUrl,
       endpointsUrl: dashboardUrl,
     };
+  }
+
+  /** List project-scoped endpoint health aggregates used by the Pulse endpoint view. */
+  async listEndpointHealth(request: ListEndpointHealthRequest): Promise<ListEndpointHealthResponse> {
+    requireString(request.projectId, "projectId");
+    const params = endpointHealthQueryParams(request);
+    if (request.sort) params.set("sort", request.sort);
+    if (request.limit !== undefined) params.set("limit", String(request.limit));
+    const query = params.size ? `?${params}` : "";
+    const response = await this.request<Record<string, unknown>>(
+      `/projects/${encodeURIComponent(request.projectId)}/api-runs/endpoints${query}`,
+      { method: "GET", request: request.request },
+    );
+    return normalizeEndpointHealthList(response);
+  }
+
+  /** Get project-scoped health totals, latency percentiles, and sparkline buckets. */
+  async getEndpointHealthMetrics(
+    request: GetEndpointHealthMetricsRequest,
+  ): Promise<EndpointHealthMetricsResponse> {
+    requireString(request.projectId, "projectId");
+    const params = endpointHealthQueryParams(request);
+    if (request.endpointKey) params.set("endpoint_key", request.endpointKey);
+    const query = params.size ? `?${params}` : "";
+    const response = await this.request<Record<string, unknown>>(
+      `/projects/${encodeURIComponent(request.projectId)}/api-runs/metrics${query}`,
+      { method: "GET", request: request.request },
+    );
+    return normalizeEndpointHealthMetrics(response);
+  }
+
+  /** Get directed, evidence-backed dependencies used for failure blast-radius analysis. */
+  async getEndpointDependencies(
+    request: GetEndpointDependenciesRequest,
+  ): Promise<EndpointDependenciesResponse> {
+    requireString(request.projectId, "projectId");
+    const response = await this.request<Record<string, unknown>>(
+      `/projects/${encodeURIComponent(request.projectId)}/endpoint-dependencies`,
+      { method: "GET", request: request.request },
+    );
+    return normalizeEndpointDependencies(response);
   }
 
   /** Configure continuous health testing for a saved API endpoint. */
@@ -1321,6 +1368,37 @@ function isHttpMethod(value: string): value is EndpointProbe["method"] & string 
   return ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(value);
 }
 
+function endpointHealthQueryParams(
+  request: ListEndpointHealthRequest | GetEndpointHealthMetricsRequest,
+): URLSearchParams {
+  if ((request.start === undefined) !== (request.end === undefined)) {
+    throw new PremanConfigError("start and end must be supplied together.");
+  }
+  const params = new URLSearchParams();
+  if (request.window) params.set("window", request.window);
+  if (request.start !== undefined && request.end !== undefined) {
+    params.set("start", endpointHealthDate(request.start, "start"));
+    params.set("end", endpointHealthDate(request.end, "end"));
+  }
+  if (request.method) params.set("method", request.method);
+  for (const status of request.statuses ?? []) params.append("status", status);
+  if (request.origin) params.set("origin", request.origin);
+  if (request.originLabel) params.set("origin_label", request.originLabel);
+  if (request.environmentId) params.set("env_id", request.environmentId);
+  if (request.minLatencyMs !== undefined) params.set("min_latency_ms", String(request.minLatencyMs));
+  if (request.query) params.set("q", request.query);
+  return params;
+}
+
+function endpointHealthDate(value: string | Date, field: string): string {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new PremanConfigError(`${field} must be a valid Date.`);
+    return value.toISOString();
+  }
+  if (!value.trim()) throw new PremanConfigError(`${field} must be a non-empty ISO timestamp.`);
+  return value;
+}
+
 function normalizeRetry(retry: RetryOptions | undefined = {}): Required<RetryOptions> {
   return {
     retries: retry.retries ?? 2,
@@ -1512,6 +1590,109 @@ function arrayOfObjectsAt(value: Record<string, unknown>, key: string): Record<s
   return Array.isArray(item)
     ? item.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
     : [];
+}
+
+function normalizeEndpointHealthList(
+  response: Record<string, unknown>,
+): ListEndpointHealthResponse {
+  const observations = objectAt(response, "observations");
+  return {
+    projectId: stringAt(response, "project_id"),
+    window: stringAt(response, "window") as ListEndpointHealthResponse["window"],
+    start: stringAt(response, "start"),
+    end: stringAt(response, "end"),
+    sort: stringAt(response, "sort") as ListEndpointHealthResponse["sort"],
+    endpoints: arrayOfObjectsAt(response, "endpoints").map((endpoint) => ({
+      endpointKey: stringAt(endpoint, "endpoint_key"),
+      method: stringAt(endpoint, "method"),
+      host: stringAt(endpoint, "host"),
+      pathTemplate: stringAt(endpoint, "path_template"),
+      runs: numberAt(endpoint, "runs"),
+      failures: numberAt(endpoint, "failures"),
+      errorRate: numberAt(endpoint, "error_rate"),
+      p50Ms: numberAt(endpoint, "p50_ms"),
+      p95Ms: numberAt(endpoint, "p95_ms"),
+      p99Ms: numberAt(endpoint, "p99_ms"),
+      lastRunAt: nullableStringAt(endpoint, "last_run_at"),
+    })),
+    observations: {
+      probes: arrayOfObjectsAt(observations, "probes").map((probe) => ({
+        method: stringAt(probe, "method"),
+        pathTemplate: stringAt(probe, "path_template"),
+        lastOk: typeof probe["last_ok"] === "boolean" ? probe["last_ok"] : null,
+        lastProbeAt: nullableStringAt(probe, "last_probe_at"),
+      })),
+      logs: arrayOfObjectsAt(observations, "logs").map((log) => ({
+        method: stringAt(log, "method"),
+        pathTemplate: stringAt(log, "path_template"),
+        lines: numberAt(log, "lines"),
+        errorLines: numberAt(log, "error_lines"),
+        lastObservedAt: nullableStringAt(log, "last_observed_at"),
+      })),
+    },
+    raw: response,
+  };
+}
+
+function normalizeEndpointHealthMetrics(
+  response: Record<string, unknown>,
+): EndpointHealthMetricsResponse {
+  return {
+    projectId: stringAt(response, "project_id"),
+    window: stringAt(response, "window") as EndpointHealthMetricsResponse["window"],
+    start: stringAt(response, "start"),
+    end: stringAt(response, "end"),
+    bucketSeconds: numberAt(response, "bucket_seconds"),
+    total: numberAt(response, "total"),
+    failed: numberAt(response, "failed"),
+    errored: numberAt(response, "errored"),
+    errorRate: numberAt(response, "error_rate"),
+    passRate: typeof response["pass_rate"] === "number" ? response["pass_rate"] : null,
+    p50Ms: numberAt(response, "p50_ms"),
+    p95Ms: numberAt(response, "p95_ms"),
+    p99Ms: numberAt(response, "p99_ms"),
+    averageMs: numberAt(response, "avg_ms"),
+    maxMs: numberAt(response, "max_ms"),
+    lastRunAt: nullableStringAt(response, "last_run_at"),
+    sparkline: arrayOfObjectsAt(response, "sparkline").map((point) => ({
+      timestamp: stringAt(point, "ts"),
+      runs: numberAt(point, "runs"),
+      failures: numberAt(point, "failures"),
+      p50Ms: numberAt(point, "p50_ms"),
+      p95Ms: numberAt(point, "p95_ms"),
+    })),
+    raw: response,
+  };
+}
+
+function normalizeEndpointDependencies(
+  response: Record<string, unknown>,
+): EndpointDependenciesResponse {
+  const sources = objectAt(response, "sources");
+  const normalizeNode = (node: Record<string, unknown>) => ({
+    id: stringAt(node, "id"),
+    name: stringAt(node, "name"),
+    method: stringAt(node, "method"),
+    host: stringAt(node, "host"),
+    pathTemplate: stringAt(node, "path_template"),
+  });
+  return {
+    projectId: stringAt(response, "project_id"),
+    direction: "source_depends_on_target",
+    edges: arrayOfObjectsAt(response, "edges").map((edge) => ({
+      id: stringAt(edge, "id"),
+      source: normalizeNode(objectAt(edge, "source")),
+      target: normalizeNode(objectAt(edge, "target")),
+      edgeType: stringAt(edge, "edge_type") as EndpointDependenciesResponse["edges"][number]["edgeType"],
+      confidence: numberAt(edge, "confidence"),
+      evidence: objectAt(edge, "evidence"),
+    })),
+    sources: {
+      endpointEdges: numberAt(sources, "endpoint_edges"),
+      collectionDeclarations: numberAt(sources, "collection_declarations"),
+    },
+    raw: response,
+  };
 }
 
 function normalizeVerifyTokenIdentity(value: Record<string, unknown>): {

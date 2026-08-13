@@ -1304,3 +1304,194 @@ test("startConsumerUpstreamOAuth uses consumer bearer against runtime route", as
   assert.equal(calls[0].init.headers.Authorization, "Bearer pm_hmcp_consumer_token_example");
   assert.equal(result.state, "consumer");
 });
+
+test("listEndpointHealth serializes filters and normalizes project endpoint aggregates", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: new URL(String(url)), init });
+      return jsonResponse({
+        project_id: "project_123",
+        window: "24h",
+        start: "2026-08-11T00:00:00Z",
+        end: "2026-08-12T00:00:00Z",
+        sort: "error_rate",
+        endpoints: [{
+          endpoint_key: "POST|api.example.com|/checkout",
+          method: "POST",
+          host: "api.example.com",
+          path_template: "/checkout",
+          runs: 12,
+          failures: 2,
+          error_rate: 0.1667,
+          p50_ms: 110,
+          p95_ms: 840,
+          p99_ms: 1200,
+          last_run_at: "2026-08-11T23:58:00Z",
+        }],
+        observations: {
+          probes: [{
+            method: "POST",
+            path_template: "/checkout",
+            last_ok: false,
+            last_probe_at: "2026-08-11T23:59:00Z",
+          }],
+          logs: [{
+            method: "POST",
+            path_template: "/checkout",
+            lines: 40,
+            error_lines: 3,
+            last_observed_at: "2026-08-11T23:59:30Z",
+          }],
+        },
+      });
+    },
+  });
+
+  const result = await client.listEndpointHealth({
+    projectId: "project_123",
+    window: "24h",
+    statuses: ["failed", "error"],
+    origin: "hosted",
+    originLabel: "prod-runner",
+    environmentId: "env_prod",
+    minLatencyMs: 500,
+    query: "checkout",
+    sort: "error_rate",
+    limit: 50,
+  });
+
+  assert.equal(calls[0].url.pathname, "/projects/project_123/api-runs/endpoints");
+  assert.deepEqual(calls[0].url.searchParams.getAll("status"), ["failed", "error"]);
+  assert.equal(calls[0].url.searchParams.get("origin_label"), "prod-runner");
+  assert.equal(calls[0].url.searchParams.get("env_id"), "env_prod");
+  assert.equal(calls[0].url.searchParams.get("min_latency_ms"), "500");
+  assert.equal(calls[0].url.searchParams.get("q"), "checkout");
+  assert.equal(calls[0].url.searchParams.get("sort"), "error_rate");
+  assert.equal(calls[0].url.searchParams.get("limit"), "50");
+  assert.equal(calls[0].init.method, "GET");
+  assert.deepEqual(result.endpoints[0], {
+    endpointKey: "POST|api.example.com|/checkout",
+    method: "POST",
+    host: "api.example.com",
+    pathTemplate: "/checkout",
+    runs: 12,
+    failures: 2,
+    errorRate: 0.1667,
+    p50Ms: 110,
+    p95Ms: 840,
+    p99Ms: 1200,
+    lastRunAt: "2026-08-11T23:58:00Z",
+  });
+  assert.equal(result.observations.probes[0].lastOk, false);
+  assert.equal(result.observations.logs[0].errorLines, 3);
+});
+
+test("getEndpointHealthMetrics supports a custom range and normalizes the sparkline", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url) => {
+      calls.push(new URL(String(url)));
+      return jsonResponse({
+        project_id: "project_123",
+        window: "custom",
+        start: "2026-08-10T00:00:00.000Z",
+        end: "2026-08-12T00:00:00.000Z",
+        bucket_seconds: 3600,
+        total: 20,
+        failed: 2,
+        errored: 1,
+        error_rate: 0.15,
+        pass_rate: 0.85,
+        p50_ms: 100,
+        p95_ms: 900,
+        p99_ms: 1500,
+        avg_ms: 180,
+        max_ms: 2000,
+        last_run_at: "2026-08-11T23:00:00Z",
+        sparkline: [{
+          ts: "2026-08-11T23:00:00Z",
+          runs: 4,
+          failures: 1,
+          p50_ms: 120,
+          p95_ms: 950,
+        }],
+      });
+    },
+  });
+
+  const result = await client.getEndpointHealthMetrics({
+    projectId: "project_123",
+    start: new Date("2026-08-10T00:00:00Z"),
+    end: new Date("2026-08-12T00:00:00Z"),
+    endpointKey: "POST|api.example.com|/checkout",
+  });
+
+  assert.equal(calls[0].pathname, "/projects/project_123/api-runs/metrics");
+  assert.equal(calls[0].searchParams.get("start"), "2026-08-10T00:00:00.000Z");
+  assert.equal(calls[0].searchParams.get("end"), "2026-08-12T00:00:00.000Z");
+  assert.equal(calls[0].searchParams.get("endpoint_key"), "POST|api.example.com|/checkout");
+  assert.equal(result.passRate, 0.85);
+  assert.equal(result.averageMs, 180);
+  assert.deepEqual(result.sparkline[0], {
+    timestamp: "2026-08-11T23:00:00Z",
+    runs: 4,
+    failures: 1,
+    p50Ms: 120,
+    p95Ms: 950,
+  });
+});
+
+test("getEndpointDependencies returns directed evidence-backed edges", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: new URL(String(url)), init });
+      return jsonResponse({
+        project_id: "project_123",
+        direction: "source_depends_on_target",
+        edges: [{
+          id: "dep_1",
+          source: { id: "checkout", name: "Checkout", method: "POST", host: "api.example.com", path_template: "/checkout" },
+          target: { id: "session", name: "Session", method: "POST", host: "api.example.com", path_template: "/sessions" },
+          edge_type: "depends_on",
+          confidence: 1,
+          evidence: { source: "collection", collection_name: "Purchase" },
+        }],
+        sources: { endpoint_edges: 0, collection_declarations: 1 },
+      });
+    },
+  });
+
+  const result = await client.getEndpointDependencies({ projectId: "project_123" });
+
+  assert.equal(calls[0].url.pathname, "/projects/project_123/endpoint-dependencies");
+  assert.equal(calls[0].init.method, "GET");
+  assert.deepEqual(result.edges[0], {
+    id: "dep_1",
+    source: { id: "checkout", name: "Checkout", method: "POST", host: "api.example.com", pathTemplate: "/checkout" },
+    target: { id: "session", name: "Session", method: "POST", host: "api.example.com", pathTemplate: "/sessions" },
+    edgeType: "depends_on",
+    confidence: 1,
+    evidence: { source: "collection", collection_name: "Purchase" },
+  });
+  assert.equal(result.sources.collectionDeclarations, 1);
+});
+
+test("endpoint health custom ranges require both bounds", async () => {
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => jsonResponse({}),
+  });
+
+  await assert.rejects(
+    client.getEndpointHealthMetrics({
+      projectId: "project_123",
+      start: "2026-08-10T00:00:00Z",
+    }),
+    (error) => error instanceof PremanConfigError && /start and end/.test(error.message),
+  );
+});

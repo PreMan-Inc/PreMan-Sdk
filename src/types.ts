@@ -45,6 +45,141 @@ export type RegisterEndpointsResponse = {
   endpointsUrl: string;
 };
 
+/** Named windows supported by the project-scoped Pulse API. */
+export type EndpointHealthWindow = "1h" | "24h" | "7d" | "30d";
+export type EndpointHealthStatus = "passed" | "failed" | "error" | "skipped";
+export type EndpointHealthOrigin = "hosted" | "local";
+export type EndpointHealthSort = "p95_ms" | "error_rate" | "runs" | "last_run_at";
+
+export type EndpointHealthQuery = {
+  projectId: string;
+  window?: EndpointHealthWindow;
+  start?: string | Date;
+  end?: string | Date;
+  method?: string;
+  statuses?: EndpointHealthStatus[];
+  origin?: EndpointHealthOrigin;
+  originLabel?: string;
+  environmentId?: string;
+  minLatencyMs?: number;
+  query?: string;
+  request?: RequestOptions;
+};
+
+export type ListEndpointHealthRequest = EndpointHealthQuery & {
+  sort?: EndpointHealthSort;
+  limit?: number;
+};
+
+export type GetEndpointHealthMetricsRequest = EndpointHealthQuery & {
+  endpointKey?: string;
+};
+
+export type EndpointHealthAggregate = {
+  endpointKey: string;
+  method: string;
+  host: string;
+  pathTemplate: string;
+  runs: number;
+  failures: number;
+  errorRate: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  lastRunAt: string | null;
+};
+
+export type EndpointProbeObservation = {
+  method: string;
+  pathTemplate: string;
+  lastOk: boolean | null;
+  lastProbeAt: string | null;
+};
+
+export type EndpointLogObservation = {
+  method: string;
+  pathTemplate: string;
+  lines: number;
+  errorLines: number;
+  lastObservedAt: string | null;
+};
+
+export type EndpointHealthObservations = {
+  probes: EndpointProbeObservation[];
+  logs: EndpointLogObservation[];
+};
+
+export type ListEndpointHealthResponse = {
+  projectId: string;
+  window: EndpointHealthWindow | "custom";
+  start: string;
+  end: string;
+  sort: EndpointHealthSort;
+  endpoints: EndpointHealthAggregate[];
+  observations: EndpointHealthObservations;
+  raw?: Record<string, unknown>;
+};
+
+export type EndpointHealthSparklinePoint = {
+  timestamp: string;
+  runs: number;
+  failures: number;
+  p50Ms: number;
+  p95Ms: number;
+};
+
+export type EndpointHealthMetricsResponse = {
+  projectId: string;
+  window: EndpointHealthWindow | "custom";
+  start: string;
+  end: string;
+  bucketSeconds: number;
+  total: number;
+  failed: number;
+  errored: number;
+  errorRate: number;
+  passRate: number | null;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  averageMs: number;
+  maxMs: number;
+  lastRunAt: string | null;
+  sparkline: EndpointHealthSparklinePoint[];
+  raw?: Record<string, unknown>;
+};
+
+export type EndpointDependencyType = "calls" | "depends_on" | "sequence_next";
+export type EndpointDependencyNode = {
+  id: string;
+  name: string;
+  method: string;
+  host: string;
+  pathTemplate: string;
+};
+export type EndpointDependencyEdge = {
+  id: string;
+  source: EndpointDependencyNode;
+  target: EndpointDependencyNode;
+  edgeType: EndpointDependencyType;
+  confidence: number;
+  evidence: Record<string, unknown>;
+};
+export type GetEndpointDependenciesRequest = {
+  projectId: string;
+  request?: RequestOptions;
+};
+export type EndpointDependenciesResponse = {
+  projectId: string;
+  direction: "source_depends_on_target";
+  edges: EndpointDependencyEdge[];
+  sources: {
+    endpointEdges: number;
+    collectionDeclarations: number;
+  };
+  raw?: Record<string, unknown>;
+};
+
 /** Standing authorization for scheduled requests against an endpoint. */
 export type UnattendedPolicy = "read_only" | "allow_writes" | "allow_destructive";
 
