@@ -119,6 +119,31 @@ Probe credentials are encrypted at rest and only their header names are returned
 
 Open [app.preman.live](https://app.preman.live) to watch endpoint health, investigate incidents, and follow each repair through validation and PR creation.
 
+To embed the same deterministic **Investigate with agent** path, create a
+durable Workbench conversation and queue the repository task against it. The
+returned fix-task id is the stable handle for progress and the eventual review
+PR; the SDK never merges or deploys it.
+
+```ts
+const conversation = await preman.createWorkbenchConversation({
+  title: "Investigate GET /health",
+});
+
+const handoff = await preman.createCodingAgentTask({
+  conversationId: conversation.id,
+  title: "Investigate GET /health",
+  instructions: "Use the captured failure, repair it, validate it, and open a review PR.",
+  executionMode: "workspace_write",
+});
+
+const task = await preman.getFixTask(handoff.fixTask.id);
+console.log(task.dispatchStage, task.prUrl);
+```
+
+For conversational investigations, `streamWorkbenchMessage()` emits typed
+`status`, `delta`, `done`, and `error` events and returns the persisted final
+turn.
+
 ### Endpoint health aggregates and dependencies
 
 Use the project-scoped Pulse APIs for custom health views and evidence-backed

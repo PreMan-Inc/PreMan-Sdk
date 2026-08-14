@@ -9,6 +9,8 @@ import {
   type CallPlatformToolRequest,
   type CallPlatformToolResponse,
   type ConfigureEndpointProbeRequest,
+  type CodingAgentTaskHandoffResponse,
+  type CreateCodingAgentTaskRequest,
   type CreateAppRequest,
   type CreateAppResponse,
   type CreateHealingRuleRequest,
@@ -36,13 +38,14 @@ import {
   type DeployMcpRequest,
   type DeployMcpResponse,
   type CreateLocalStdioTunnelRequest,
+  type CreateWorkbenchConversationRequest,
   type GetCapabilitiesRequest,
+  type GetWorkbenchConversationRequest,
   type GithubInstallRefreshResponse,
   type GithubInstallStartResponse,
   type GithubCommitListResponse,
   type GithubIntegration,
   type GithubIntegrationRemovalResponse,
-  type GithubSimulationHandoffConversation,
   type GithubSimulationHandoffRequest,
   type GithubSimulationHandoffResponse,
   type GithubSimulationDetail,
@@ -89,6 +92,8 @@ import {
   type RotateTokenRequest,
   type RotateTokenResponse,
   type SendLocalStdioTunnelMessageRequest,
+  type SendWorkbenchMessageRequest,
+  type StreamWorkbenchMessageRequest,
   type UpdateHostedMcpRequest,
   type UpdateLocalStdioTunnelStatusRequest,
   type StartConsumerUpstreamOAuthRequest,
@@ -105,6 +110,9 @@ import {
   type VerifyTokenResponse,
   type WaitForSelfHealingRequest,
   type WaitForUpstreamHostingRequest,
+  type WorkbenchChatStreamEvent,
+  type WorkbenchChatTurnResponse,
+  type WorkbenchConversation,
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
 import { normalizeHostedMcpCatalog } from "./catalog.js";
@@ -395,6 +403,94 @@ export class PremanClient {
     return normalizeFixTask(objectAt(response, "fix_task"));
   }
 
+  /** Start a durable Workbench chat for an investigation or repair handoff. */
+  async createWorkbenchConversation(
+    request: CreateWorkbenchConversationRequest = {},
+  ): Promise<WorkbenchConversation> {
+    if (request.workspaceId !== undefined) requireString(request.workspaceId, "workspaceId");
+    const response = await this.request<Record<string, unknown>>("/workbench/conversations", {
+      method: "POST",
+      body: { title: request.title?.trim() || "New chat" },
+      request: withWorkspaceHeader(request.request, request.workspaceId),
+    });
+    return normalizeWorkbenchConversation(response);
+  }
+
+  /** Fetch the persisted chat, including hydrated coding-agent handoff artifacts. */
+  async getWorkbenchConversation(
+    request: GetWorkbenchConversationRequest,
+  ): Promise<WorkbenchConversation> {
+    requireString(request.conversationId, "conversationId");
+    const response = await this.request<Record<string, unknown>>(
+      `/workbench/conversations/${encodeURIComponent(request.conversationId)}`,
+      { method: "GET", request: request.request },
+    );
+    return normalizeWorkbenchConversation(response);
+  }
+
+  /** Send one Workbench chat turn without token streaming. */
+  async sendWorkbenchMessage(
+    request: SendWorkbenchMessageRequest,
+  ): Promise<WorkbenchChatTurnResponse> {
+    requireString(request.conversationId, "conversationId");
+    requireString(request.content, "content");
+    const response = await this.request<Record<string, unknown>>(
+      `/workbench/conversations/${encodeURIComponent(request.conversationId)}/messages`,
+      {
+        method: "POST",
+        body: omitUndefined({ content: request.content, provider: request.provider }),
+        request: request.request,
+      },
+    );
+    return normalizeWorkbenchChatTurn(response);
+  }
+
+  /** Stream status and token events for one Workbench chat turn over SSE. */
+  async streamWorkbenchMessage(
+    request: StreamWorkbenchMessageRequest,
+  ): Promise<WorkbenchChatTurnResponse> {
+    requireString(request.conversationId, "conversationId");
+    requireString(request.content, "content");
+    const done = await this.requestWorkbenchStream(
+      `/workbench/conversations/${encodeURIComponent(request.conversationId)}/messages/stream`,
+      omitUndefined({ content: request.content, provider: request.provider }),
+      request,
+    );
+    return done;
+  }
+
+  /**
+   * Queue Guard's deterministic "Investigate with agent" action. Poll the
+   * returned fix task with getFixTask() to follow validation and review-PR state.
+   */
+  async createCodingAgentTask(
+    request: CreateCodingAgentTaskRequest,
+  ): Promise<CodingAgentTaskHandoffResponse> {
+    requireString(request.title, "title");
+    requireString(request.instructions, "instructions");
+    requireString(request.conversationId, "conversationId");
+    if (request.workspaceId !== undefined) requireString(request.workspaceId, "workspaceId");
+    const response = await this.request<Record<string, unknown>>("/workbench/coding-agent/tasks", {
+      method: "POST",
+      body: omitUndefined({
+        title: request.title,
+        instructions: request.instructions,
+        conversation_id: request.conversationId,
+        execution_mode: request.executionMode,
+      }),
+      request: withWorkspaceHeader(request.request, request.workspaceId),
+    });
+    const rawConversation = objectOrNullAt(response, "conversation");
+    return {
+      fixTask: normalizeFixTask(objectAt(response, "fix_task")),
+      dispatch: objectOrNullAt(response, "dispatch"),
+      artifact: objectAt(response, "artifact"),
+      alreadyExisted: response["already_existed"] === true,
+      conversation: rawConversation ? normalizeWorkbenchConversation(rawConversation) : null,
+      raw: response,
+    };
+  }
+
   async getCapabilities(request: GetCapabilitiesRequest = {}): Promise<PremanCapabilities> {
     try {
       const response = await this.request<Record<string, unknown>>(PREMAN_CAPABILITIES_PATH, {
@@ -478,7 +574,7 @@ export class PremanClient {
       artifact: objectAt(response, "artifact"),
       alreadyExisted: response["already_existed"] === true,
       conversation: rawConversation
-        ? normalizeGithubSimulationHandoffConversation(rawConversation)
+        ? normalizeWorkbenchConversation(rawConversation)
         : null,
       raw: response,
     };
@@ -1228,6 +1324,90 @@ export class PremanClient {
     return `${this.appUrl}${normalizedPath}`;
   }
 
+  private async requestWorkbenchStream(
+    path: string,
+    body: Record<string, unknown>,
+    options: StreamWorkbenchMessageRequest,
+  ): Promise<WorkbenchChatTurnResponse> {
+    const requestId = randomUUID();
+    const timeoutMs = options.request?.timeoutMs ?? this.timeoutMs;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const url = `${this.apiUrl}${path}`;
+    const hookEvent = {
+      method: "POST",
+      url,
+      path,
+      requestId,
+      attempt: 1,
+      idempotencyKey: options.request?.idempotencyKey,
+    };
+    const startedAt = Date.now();
+
+    try {
+      await this.hooks?.onRequest?.(hookEvent);
+      const response = await this.fetchImpl(url, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+          "User-Agent": "preman-sdk",
+          "X-Request-Id": requestId,
+          ...options.request?.headers,
+          ...(options.request?.idempotencyKey
+            ? { "Idempotency-Key": options.request.idempotencyKey }
+            : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      await this.hooks?.onResponse?.({
+        ...hookEvent,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+      });
+      if (!response.ok) {
+        throw errorFromResponse(response, await readBody(response));
+      }
+      if (!response.body) {
+        throw new PremanError("PreMan chat stream returned no response body.", {
+          status: 502,
+        });
+      }
+
+      let done: WorkbenchChatTurnResponse | null = null;
+      for await (const raw of readSseJson(response.body)) {
+        const event = normalizeWorkbenchChatStreamEvent(raw);
+        await options.onEvent?.(event);
+        if (event.type === "done") {
+          done = { conversation: event.conversation, turn: event.turn, raw: event.raw };
+        } else if (event.type === "error") {
+          throw new PremanError(event.message || "PreMan chat stream failed.", {
+            status: 502,
+            body: event.raw,
+          });
+        }
+      }
+      if (!done) {
+        throw new PremanError("PreMan chat stream ended before the persisted turn arrived.", {
+          status: 502,
+        });
+      }
+      return done;
+    } catch (error) {
+      await this.hooks?.onError?.({
+        ...hookEvent,
+        status: error instanceof PremanError ? error.status : undefined,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private async request<T>(
     path: string,
     options: {
@@ -1503,6 +1683,20 @@ function endpointHealthDate(value: string | Date, field: string): string {
   return value;
 }
 
+function withWorkspaceHeader(
+  request: RequestOptions | undefined,
+  workspaceId: string | undefined,
+): RequestOptions | undefined {
+  if (!workspaceId) return request;
+  return {
+    ...request,
+    headers: {
+      ...request?.headers,
+      "x-workspace-id": workspaceId,
+    },
+  };
+}
+
 function normalizeRetry(retry: RetryOptions | undefined = {}): Required<RetryOptions> {
   return {
     retries: retry.retries ?? 2,
@@ -1530,6 +1724,55 @@ function backoffMs(attempt: number, retry: Required<RetryOptions>): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function* readSseJson(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<Record<string, unknown>> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const parseRecord = (record: string): Record<string, unknown> | null => {
+    const data = record
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]") return null;
+    try {
+      const parsed: unknown = JSON.parse(data);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Replaced below with a stable SDK error that does not echo streamed text.
+    }
+    throw new PremanError("PreMan chat stream returned malformed event data.", {
+      status: 502,
+    });
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      buffer = buffer.replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const raw = parseRecord(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        if (raw) yield raw;
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) break;
+    }
+    const trailing = parseRecord(buffer);
+    if (trailing) yield trailing;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 function errorFromResponse(response: Response, body: unknown): PremanError {
@@ -1669,9 +1912,9 @@ function objectAt(value: Record<string, unknown>, key: string): Record<string, u
   return item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
 }
 
-function normalizeGithubSimulationHandoffConversation(
+function normalizeWorkbenchConversation(
   conversation: Record<string, unknown>,
-): GithubSimulationHandoffConversation {
+): WorkbenchConversation {
   return {
     id: stringAt(conversation, "id"),
     workspaceId: stringAt(conversation, "workspace_id"),
@@ -1692,6 +1935,53 @@ function normalizeGithubSimulationHandoffConversation(
     })),
     raw: conversation,
   };
+}
+
+function normalizeWorkbenchConversationMessage(
+  message: Record<string, unknown>,
+): WorkbenchConversation["messages"][number] {
+  return {
+    id: stringAt(message, "id"),
+    role: stringAt(message, "role"),
+    content: stringAt(message, "content"),
+    artifacts: arrayOfObjectsAt(message, "artifacts"),
+    provider: nullableStringAt(message, "provider"),
+    model: nullableStringAt(message, "model"),
+    createdAt: nullableStringAt(message, "created_at"),
+    raw: message,
+  };
+}
+
+function normalizeWorkbenchChatTurn(
+  response: Record<string, unknown>,
+): WorkbenchChatTurnResponse {
+  return {
+    conversation: normalizeWorkbenchConversation(objectAt(response, "conversation")),
+    turn: normalizeWorkbenchConversationMessage(objectAt(response, "turn")),
+    raw: response,
+  };
+}
+
+function normalizeWorkbenchChatStreamEvent(
+  raw: Record<string, unknown>,
+): WorkbenchChatStreamEvent {
+  const type = stringAt(raw, "type");
+  if (type === "status") {
+    return { type, label: stringAt(raw, "label"), raw };
+  }
+  if (type === "delta") {
+    return { type, text: stringAt(raw, "text"), raw };
+  }
+  if (type === "done") {
+    return { type, ...normalizeWorkbenchChatTurn(raw) };
+  }
+  if (type === "error") {
+    return { type, message: stringAt(raw, "message"), raw };
+  }
+  throw new PremanError(`Unknown PreMan chat stream event: ${type || "missing type"}.`, {
+    status: 502,
+    body: raw,
+  });
 }
 
 function stringAt(value: Record<string, unknown>, key: string): string {
