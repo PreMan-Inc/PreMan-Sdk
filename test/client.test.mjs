@@ -91,7 +91,7 @@ test("runSavedRequest encodes the request id and sends explicit one-run approval
     "https://api.preman.live/workbench/requests/request%2Fwith%20space%3F%23/run",
   );
   assert.equal(calls[0].init.method, "POST");
-  assert.deepEqual(JSON.parse(calls[0].init.body), { approveDestructive: true });
+  assert.deepEqual(JSON.parse(calls[0].init.body), { approve_destructive: true });
   assert.equal(calls[0].init.headers["X-Workspace-Id"], "workspace_123");
   assert.equal(result.id, "run_123");
   assert.equal(result.requestId, "request/with space?#");
