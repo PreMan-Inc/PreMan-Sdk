@@ -206,7 +206,7 @@ export class PremanClient {
       throw new PremanConfigError("approveDestructive must be a boolean.");
     }
 
-    const body = omitUndefined({ approve_destructive: request.approveDestructive });
+    const body = omitUndefined({ approveDestructive: request.approveDestructive });
     const response = await this.request<Record<string, unknown>>(
       `/workbench/requests/${encodeURIComponent(request.requestId)}/run`,
       {
