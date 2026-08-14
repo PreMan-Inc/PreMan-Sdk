@@ -381,6 +381,86 @@ export type WaitForSelfHealingRequest = {
   request?: RequestOptions;
 };
 
+export type WorkbenchConversationMessage = {
+  id: string;
+  role: string;
+  content: string;
+  artifacts: Record<string, unknown>[];
+  provider: string | null;
+  model: string | null;
+  createdAt: string | null;
+  raw: Record<string, unknown>;
+};
+
+/** Durable Workbench chat used by Guard investigations and coding-agent handoffs. */
+export type WorkbenchConversation = {
+  id: string;
+  workspaceId: string;
+  title: string;
+  archived: boolean;
+  /** True when the server reports an active repair task for this conversation. */
+  taskInProgress: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  messages: WorkbenchConversationMessage[];
+  raw: Record<string, unknown>;
+};
+
+export type CreateWorkbenchConversationRequest = {
+  title?: string;
+  workspaceId?: string;
+  request?: RequestOptions;
+};
+
+export type GetWorkbenchConversationRequest = {
+  conversationId: string;
+  request?: RequestOptions;
+};
+
+export type SendWorkbenchMessageRequest = {
+  conversationId: string;
+  content: string;
+  provider?: string;
+  request?: RequestOptions;
+};
+
+export type WorkbenchChatTurnResponse = {
+  conversation: WorkbenchConversation;
+  turn: WorkbenchConversationMessage;
+  raw: Record<string, unknown>;
+};
+
+export type WorkbenchChatStreamEvent =
+  | { type: "status"; label: string; raw: Record<string, unknown> }
+  | { type: "delta"; text: string; raw: Record<string, unknown> }
+  | ({ type: "done" } & WorkbenchChatTurnResponse)
+  | { type: "error"; message: string; raw: Record<string, unknown> };
+
+export type StreamWorkbenchMessageRequest = SendWorkbenchMessageRequest & {
+  onEvent?: (event: WorkbenchChatStreamEvent) => void | Promise<void>;
+};
+
+export type CodingAgentExecutionMode = "read_only" | "workspace_write";
+
+/** Deterministic Workbench action used by Guard's Investigate with agent control. */
+export type CreateCodingAgentTaskRequest = {
+  title: string;
+  instructions: string;
+  conversationId: string;
+  workspaceId?: string;
+  executionMode?: CodingAgentExecutionMode;
+  request?: RequestOptions;
+};
+
+export type CodingAgentTaskHandoffResponse = {
+  fixTask: FixTask;
+  dispatch: Record<string, unknown> | null;
+  artifact: Record<string, unknown>;
+  alreadyExisted: boolean;
+  conversation: WorkbenchConversation | null;
+  raw: Record<string, unknown>;
+};
+
 export type GithubInstallStartResponse = {
   install_url: string;
   mode?: "install" | "configure";
@@ -438,30 +518,10 @@ export type GithubSimulationHandoffRequest = {
   request?: RequestOptions;
 };
 
-export type GithubSimulationHandoffConversationMessage = {
-  id: string;
-  role: string;
-  content: string;
-  artifacts: Record<string, unknown>[];
-  provider: string | null;
-  model: string | null;
-  createdAt: string | null;
-  raw: Record<string, unknown>;
-};
+export type GithubSimulationHandoffConversationMessage = WorkbenchConversationMessage;
 
 /** Durable workbench chat created for a simulation repair handoff. */
-export type GithubSimulationHandoffConversation = {
-  id: string;
-  workspaceId: string;
-  title: string;
-  archived: boolean;
-  /** True while the conversation's repair task is queued or running. */
-  taskInProgress: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-  messages: GithubSimulationHandoffConversationMessage[];
-  raw: Record<string, unknown>;
-};
+export type GithubSimulationHandoffConversation = WorkbenchConversation;
 
 /** Safe, server-authored repair handoff for a completed GitHub simulation. */
 export type GithubSimulationHandoffResponse = {

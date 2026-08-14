@@ -168,6 +168,94 @@ test("waitForSelfHealing resolves when repair validation is done", async () => {
   assert.equal(result.prUrl, "https://github.com/acme/api/pull/42");
 });
 
+test("Workbench investigation opens a durable chat and deterministic coding-agent task", async () => {
+  const calls = [];
+  const conversation = {
+    id: "conversation_123",
+    workspace_id: "workspace_123",
+    title: "Investigate GET /health",
+    archived: false,
+    messages: [],
+    created_at: "2026-08-14T12:00:00Z",
+    updated_at: "2026-08-14T12:00:00Z",
+  };
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (calls.length === 1) return jsonResponse(conversation, { status: 201 });
+      return jsonResponse({
+        fix_task: {
+          id: "fix_123",
+          workspace_id: "workspace_123",
+          source_kind: "chat",
+          source_id: "incident_123",
+          status: "open",
+          package: { kind: "chat_task" },
+          dispatch_status: "running",
+          dispatch_stage: "patching",
+          dispatch_attempts: 1,
+        },
+        dispatch: { provider: "native", status: "running" },
+        artifact: { type: "handoff", fix_task_id: "fix_123" },
+        already_existed: false,
+        conversation,
+      });
+    },
+  });
+
+  const created = await client.createWorkbenchConversation({
+    title: "Investigate GET /health",
+    workspaceId: "workspace_123",
+  });
+  const handoff = await client.createCodingAgentTask({
+    title: "Investigate GET /health",
+    instructions: "Use the captured failure, repair it, validate it, and open a review PR.",
+    conversationId: created.id,
+    workspaceId: "workspace_123",
+    executionMode: "workspace_write",
+  });
+
+  assert.equal(calls[0].url, "https://api.preman.live/workbench/conversations");
+  assert.equal(calls[0].init.headers["x-workspace-id"], "workspace_123");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { title: "Investigate GET /health" });
+  assert.equal(calls[1].url, "https://api.preman.live/workbench/coding-agent/tasks");
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    title: "Investigate GET /health",
+    instructions: "Use the captured failure, repair it, validate it, and open a review PR.",
+    conversation_id: "conversation_123",
+    execution_mode: "workspace_write",
+  });
+  assert.equal(handoff.fixTask.dispatchStage, "patching");
+  assert.equal(handoff.conversation.id, "conversation_123");
+});
+
+test("streamWorkbenchMessage emits typed SSE progress and returns the persisted turn", async () => {
+  const encoder = new TextEncoder();
+  const events = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"type":"status","label":"Inspecting evidence"}\n\n'));
+        controller.enqueue(encoder.encode('data: {"type":"delta","text":"Likely cause"}\n\n'));
+        controller.enqueue(encoder.encode('data: {"type":"done","conversation":{"id":"conversation_123","workspace_id":"workspace_123","title":"Investigate GET /health","archived":false,"messages":[{"id":"message_1","role":"assistant","content":"Likely cause","artifacts":[],"created_at":"2026-08-14T12:00:01Z"}]},"turn":{"id":"message_1","role":"assistant","content":"Likely cause","artifacts":[],"created_at":"2026-08-14T12:00:01Z"}}\n\n'));
+        controller.close();
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } }),
+  });
+
+  const result = await client.streamWorkbenchMessage({
+    conversationId: "conversation_123",
+    content: "Investigate this endpoint failure.",
+    onEvent: (event) => events.push(event.type),
+  });
+
+  assert.deepEqual(events, ["status", "delta", "done"]);
+  assert.equal(result.conversation.id, "conversation_123");
+  assert.equal(result.turn.content, "Likely cause");
+});
+
 test("deployMcp uses the hosted MCP deploy route and normalizes response", async () => {
   const calls = [];
   const client = new PremanClient({
