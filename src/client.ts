@@ -91,6 +91,7 @@ import {
   type RevokeTokenResponse,
   type RotateTokenRequest,
   type RotateTokenResponse,
+  type RunSavedRequest,
   type SendLocalStdioTunnelMessageRequest,
   type SendWorkbenchMessageRequest,
   type StreamWorkbenchMessageRequest,
@@ -113,6 +114,8 @@ import {
   type WorkbenchChatStreamEvent,
   type WorkbenchChatTurnResponse,
   type WorkbenchConversation,
+  type WorkbenchAssertionResult,
+  type WorkbenchTestRunResult,
 } from "./types.js";
 import { PremanAuthError, PremanConfigError, PremanError, PremanPolicyDeniedError } from "./errors.js";
 import { normalizeHostedMcpCatalog } from "./catalog.js";
@@ -190,6 +193,31 @@ export class PremanClient {
       dashboardUrl,
       endpointsUrl: dashboardUrl,
     };
+  }
+
+  /** Execute and server-grade one request already saved in the Workbench. */
+  async runSavedRequest(request: RunSavedRequest): Promise<WorkbenchTestRunResult> {
+    requireString(request.requestId, "requestId");
+    if (request.workspaceId !== undefined) requireString(request.workspaceId, "workspaceId");
+    if (
+      request.approveDestructive !== undefined
+      && typeof request.approveDestructive !== "boolean"
+    ) {
+      throw new PremanConfigError("approveDestructive must be a boolean.");
+    }
+
+    const body = omitUndefined({ approveDestructive: request.approveDestructive });
+    const response = await this.request<Record<string, unknown>>(
+      `/workbench/requests/${encodeURIComponent(request.requestId)}/run`,
+      {
+        method: "POST",
+        ...(Object.keys(body).length ? { body } : {}),
+        ...(request.workspaceId
+          ? { request: { headers: { "X-Workspace-Id": request.workspaceId } } }
+          : {}),
+      },
+    );
+    return normalizeWorkbenchTestRunResult(response);
   }
 
   /** List project-scoped endpoint health aggregates used by the Pulse endpoint view. */
@@ -1510,6 +1538,40 @@ function normalizeProbeResult(raw: Record<string, unknown>): ProbeResult {
     responseStatus: nullableNumberAt(raw, "response_status"),
     latencyMs: nullableNumberAt(raw, "latency_ms"),
     error: nullableStringAt(raw, "error"),
+    raw,
+  };
+}
+
+function normalizeWorkbenchTestRunResult(
+  raw: Record<string, unknown>,
+): WorkbenchTestRunResult {
+  return {
+    id: stringAt(raw, "id"),
+    requestId: stringAt(raw, "request_id"),
+    status: stringAt(raw, "status") as WorkbenchTestRunResult["status"],
+    responseStatus: nullableNumberAt(raw, "response_status") ?? null,
+    latencyMs: nullableNumberAt(raw, "latency_ms") ?? null,
+    responseBody: nullableStringAt(raw, "response_body"),
+    error: nullableStringAt(raw, "error"),
+    method: stringAt(raw, "method"),
+    url: stringAt(raw, "url"),
+    createdAt: nullableStringAt(raw, "created_at"),
+    assertions: arrayOfObjectsAt(raw, "assertions").map(normalizeWorkbenchAssertionResult),
+    classification: nullableStringAt(raw, "classification"),
+    correlationId: nullableStringAt(raw, "correlation_id"),
+    pulseRunId: nullableStringAt(raw, "pulse_run_id"),
+    raw,
+  };
+}
+
+function normalizeWorkbenchAssertionResult(
+  raw: Record<string, unknown>,
+): WorkbenchAssertionResult {
+  return {
+    kind: stringAt(raw, "kind") as WorkbenchAssertionResult["kind"],
+    expected: raw["expected"],
+    actual: raw["actual"],
+    passed: raw["passed"] === true,
     raw,
   };
 }
