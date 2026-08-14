@@ -144,6 +144,28 @@ For conversational investigations, `streamWorkbenchMessage()` emits typed
 `status`, `delta`, `done`, and `error` events and returns the persisted final
 turn.
 
+### Run a saved Workbench request
+
+Execute a request already saved in the Workbench and receive the server-graded
+result, including assertion details and Pulse correlation identifiers:
+
+```ts
+const run = await preman.runSavedRequest({
+  requestId: "saved-request-id",
+  workspaceId: "workspace-id", // optional; defaults to the API key's workspace
+});
+
+console.log(run.status, run.responseStatus, run.latencyMs);
+console.log(run.assertions, run.classification);
+console.log(run.correlationId, run.pulseRunId);
+```
+
+PreMan blocks requests classified as destructive or billing-sensitive unless
+that specific run is explicitly approved. Only after intentionally reviewing
+the saved request, opt in for one execution with `approveDestructive: true`.
+The approval is sent for that run only; it does not change the saved request or
+create standing authorization.
+
 ### Endpoint health aggregates and dependencies
 
 Use the project-scoped Pulse APIs for custom health views and evidence-backed

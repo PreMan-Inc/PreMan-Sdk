@@ -50,6 +50,106 @@ test("registerEndpoints writes to an agent session", async () => {
   assert.equal(result.dashboardUrl, "https://app.preman.live/try?session=session_123");
 });
 
+test("runSavedRequest encodes the request id and sends explicit one-run approval", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        id: "run_123",
+        request_id: "request/with space?#",
+        status: "failed",
+        response_status: 503,
+        latency_ms: 87,
+        response_body: '{"error":"unavailable"}',
+        error: null,
+        method: "POST",
+        url: "https://api.example.com/orders",
+        created_at: "2026-08-14T12:34:56Z",
+        assertions: [{
+          kind: "status",
+          expected: 201,
+          actual: 503,
+          passed: false,
+        }],
+        classification: "API_BUG",
+        correlation_id: "pmr_123",
+        pulse_run_id: "pulse_123",
+      }, { status: 201 });
+    },
+  });
+
+  const result = await client.runSavedRequest({
+    requestId: "request/with space?#",
+    workspaceId: "workspace_123",
+    approveDestructive: true,
+  });
+
+  assert.equal(
+    calls[0].url,
+    "https://api.preman.live/workbench/requests/request%2Fwith%20space%3F%23/run",
+  );
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { approve_destructive: true });
+  assert.equal(calls[0].init.headers["X-Workspace-Id"], "workspace_123");
+  assert.equal(result.id, "run_123");
+  assert.equal(result.requestId, "request/with space?#");
+  assert.equal(result.status, "failed");
+  assert.equal(result.responseStatus, 503);
+  assert.equal(result.latencyMs, 87);
+  assert.equal(result.responseBody, '{"error":"unavailable"}');
+  assert.equal(result.error, null);
+  assert.equal(result.method, "POST");
+  assert.equal(result.url, "https://api.example.com/orders");
+  assert.equal(result.createdAt, "2026-08-14T12:34:56Z");
+  assert.deepEqual(result.assertions[0], {
+    kind: "status",
+    expected: 201,
+    actual: 503,
+    passed: false,
+    raw: {
+      kind: "status",
+      expected: 201,
+      actual: 503,
+      passed: false,
+    },
+  });
+  assert.equal(result.classification, "API_BUG");
+  assert.equal(result.correlationId, "pmr_123");
+  assert.equal(result.pulseRunId, "pulse_123");
+  assert.equal(result.raw.response_status, 503);
+  assert.equal(result.raw.pulse_run_id, "pulse_123");
+});
+
+test("runSavedRequest omits optional approval and workspace data", async () => {
+  const calls = [];
+  const client = new PremanClient({
+    apiKey: "pm_live_12345678901234567890123456789012",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        id: "run_456",
+        request_id: "request_456",
+        status: "error",
+      }, { status: 201 });
+    },
+  });
+
+  const result = await client.runSavedRequest({ requestId: "request_456" });
+
+  assert.equal("body" in calls[0].init, false);
+  assert.equal(calls[0].init.headers["X-Workspace-Id"], undefined);
+  assert.equal(result.responseStatus, null);
+  assert.equal(result.latencyMs, null);
+  assert.equal(result.responseBody, null);
+  assert.equal(result.error, null);
+  assert.deepEqual(result.assertions, []);
+  assert.equal(result.classification, null);
+  assert.equal(result.correlationId, null);
+  assert.equal(result.pulseRunId, null);
+});
+
 test("configureEndpointProbe enables continuous endpoint testing with safe defaults", async () => {
   const calls = [];
   const client = new PremanClient({

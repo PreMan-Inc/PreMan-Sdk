@@ -45,6 +45,53 @@ export type RegisterEndpointsResponse = {
   endpointsUrl: string;
 };
 
+/** Execute one request already saved in the Workbench. */
+export type RunSavedRequest = {
+  requestId: string;
+  /** Optional workspace override. Omit to use the API key's default workspace. */
+  workspaceId?: string;
+  /** One-run approval for requests classified as destructive or billing-sensitive. */
+  approveDestructive?: boolean;
+};
+
+export type WorkbenchRunStatus = "passed" | "failed" | "error";
+
+export type WorkbenchAssertionKind =
+  | "status"
+  | "status_in"
+  | "status_not"
+  | "max_latency_ms"
+  | "json_path"
+  | "required_fields";
+
+/** Server-evaluated outcome for one assertion on a saved Workbench request. */
+export type WorkbenchAssertionResult = {
+  kind: WorkbenchAssertionKind;
+  expected: unknown;
+  actual: unknown;
+  passed: boolean;
+  raw: Record<string, unknown>;
+};
+
+/** Normalized SDK view of the backend TestRunResult contract. */
+export type WorkbenchTestRunResult = {
+  id: string;
+  requestId: string;
+  status: WorkbenchRunStatus;
+  responseStatus: number | null;
+  latencyMs: number | null;
+  responseBody: string | null;
+  error: string | null;
+  method: string;
+  url: string;
+  createdAt: string | null;
+  assertions: WorkbenchAssertionResult[];
+  classification: string | null;
+  correlationId: string | null;
+  pulseRunId: string | null;
+  raw: Record<string, unknown>;
+};
+
 /** Named windows supported by the project-scoped Pulse API. */
 export type EndpointHealthWindow = "1h" | "24h" | "7d" | "30d";
 export type EndpointHealthStatus = "passed" | "failed" | "error" | "skipped";
