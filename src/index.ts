@@ -1,4 +1,6 @@
 export { PremanClient } from "./client.js";
+export { getGithubActiveRuntimeCommits } from "./github-simulations.js";
+export type { GithubActiveRuntimeCommit } from "./github-simulations.js";
 export {
   PremanAuthError,
   PremanConfigError,
@@ -149,6 +151,7 @@ export type {
   GithubSimulationFallbackPolicy,
   GithubRuntimeAttestation,
   GithubRuntimeBuildAttestation,
+  GithubRuntimeResponseAttestation,
   GithubRuntimeScenarioKind,
   GithubRuntimeScenarioOutcome,
   GithubRuntimeScenarioResult,
@@ -159,6 +162,7 @@ export type {
   GithubSimulationPolicy,
   GithubSimulationPrivacyReceipt,
   GithubSimulationRuntimeEvidence,
+  GithubSimulationRuntimeResult,
   GithubSimulationRun,
   GithubSimulationRunBaseline,
   GithubSimulationStatus,

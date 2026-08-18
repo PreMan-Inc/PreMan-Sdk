@@ -624,6 +624,18 @@ export type GithubRuntimeAttestation = {
   mismatched: number;
 };
 
+export type GithubRuntimeResponseAttestation = {
+  status: "verified" | "mismatch" | "missing";
+  verified: boolean;
+  /** Full commit reported by the runtime response when build identity is present. */
+  reported_commit_sha?: string;
+  source?: string;
+};
+
+export type GithubSimulationRuntimeResult = Record<string, unknown> & {
+  build_attestation?: GithubRuntimeResponseAttestation;
+};
+
 export type GithubRuntimeScenarioKind = "probe" | "auto_test_case" | "auto_test_suite";
 export type GithubRuntimeScenarioOutcome = "passed" | "failed" | "unavailable" | "error";
 export type GithubRuntimeBuildAttestation = "verified" | "mismatch" | "missing" | "unverified";
@@ -704,6 +716,8 @@ export type GithubSimulationSummary = Record<string, unknown> & {
   runtime_coverage_complete?: boolean;
   candidate_runtime_verified?: boolean;
   runtime_attestation?: GithubRuntimeAttestation;
+  /** Per-response evidence used to identify the commit actually serving traffic. */
+  runtime_results?: GithubSimulationRuntimeResult[];
   evidence?: Record<string, unknown> & {
     runtime?: GithubSimulationRuntimeEvidence;
   };
