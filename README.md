@@ -678,6 +678,26 @@ await preman.deployMcp({
 
 For write operations that may be retried, pass an idempotency key. The client includes `X-Request-Id` on every request so API logs, CI logs, and hosted audit events can be correlated.
 
+### GitHub impact simulation build identity
+
+When runtime responses report a different commit from the selected candidate,
+the SDK can identify every commit actually serving traffic. More than one
+entry means the checked environment is serving a rolling or split deployment.
+
+```ts
+import { getGithubActiveRuntimeCommits, PremanClient } from "preman-sdk";
+
+const preman = new PremanClient({ apiKey: process.env.PREMAN_API_KEY });
+const { runs } = await preman.listGithubSimulations({
+  integrationId: "github-integration-id",
+  limit: 1,
+});
+
+for (const active of getGithubActiveRuntimeCommits(runs[0].summary)) {
+  console.log(active.commitSha, active.responseCount);
+}
+```
+
 ### GitHub simulation repair handoff
 
 Hand a completed API-contract simulation to the coding agent connected to that
