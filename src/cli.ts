@@ -18,6 +18,7 @@ import { readConfig, writeConfig } from "./config.js";
 import { fromOpenApi, fromPostmanCollection } from "./importers.js";
 import { installCommand, writeMcpInstall, type McpInstallTarget } from "./installers.js";
 import { previewManifest, readManifest } from "./manifest.js";
+import { scanDirectory, type ScanResult } from "./scan.js";
 import { resolveSecret, secretFromEnv } from "./secrets.js";
 import { runLocalStdioTunnel } from "./tunnel.js";
 import { generateEndpointTypes, generateHostedMcpToolTypes } from "./typegen.js";
@@ -59,6 +60,7 @@ type Command =
   | "diff"
   | "assert"
   | "test"
+  | "scan"
   | "typegen"
   | "help";
 const VERSION = "0.5.0";
@@ -91,6 +93,11 @@ async function main(): Promise<void> {
 
   if (command === "test") {
     await handleTestCommand(args);
+    return;
+  }
+
+  if (command === "scan") {
+    handleScanCommand(args);
     return;
   }
 
@@ -591,6 +598,66 @@ function printTestError(asJson: boolean, code: string, message: string): void {
   console.error(`${code}: ${message}`);
 }
 
+function handleScanCommand(args: string[]): void {
+  const asJson = hasFlag(args, "--json");
+  const rawMinEndpoints = valueFor(args, "--min-endpoints");
+  const minEndpoints = rawMinEndpoints === undefined ? undefined : Number(rawMinEndpoints);
+  if (hasFlag(args, "--min-endpoints")
+    && (minEndpoints === undefined || !Number.isInteger(minEndpoints) || minEndpoints < 0)) {
+    printScanError(asJson, "invalid_config", "scan --min-endpoints must be a whole number of 0 or more.");
+    process.exitCode = 2;
+    return;
+  }
+
+  let result: ScanResult;
+  try {
+    result = scanDirectory(omitUndefined({ dir: valueFor(args, "--dir") ?? process.cwd() }));
+  } catch (error) {
+    printScanError(asJson, "invalid_config", error instanceof Error ? error.message : "The directory could not be scanned.");
+    process.exitCode = 2;
+    return;
+  }
+
+  console.log(asJson ? JSON.stringify(result, null, 2) : formatScanResult(result));
+  if (minEndpoints !== undefined && result.endpoints.length < minEndpoints) {
+    console.error(`min_endpoints_not_met: Found ${result.endpoints.length} endpoints, which is below the --min-endpoints floor of ${minEndpoints}.`);
+    process.exitCode = 1;
+  }
+}
+
+function formatScanResult(result: ScanResult): string {
+  const lines = [
+    `Scanned: ${result.dir}`,
+    `Frameworks: ${result.frameworks.length ? result.frameworks.join(", ") : "none"}`,
+  ];
+  if (result.specs.length) {
+    lines.push(`Specs: ${result.specs.join(", ")}`);
+  }
+  for (const spec of result.unsupportedSpecs) {
+    lines.push(`Spec not used: ${spec.path} — ${spec.reason}`);
+  }
+  for (const mount of result.unresolvedMounts) {
+    lines.push(`Warning: ${mount.path} mounts ${mount.target} — ${mount.reason}`);
+  }
+  for (const endpoint of result.endpoints) {
+    lines.push(`  ${endpoint.method.padEnd(6)} ${endpoint.path_template}  (${endpoint.source_location})`);
+  }
+  lines.push(`Files read: ${result.fileCount}`);
+  lines.push(`Total endpoints: ${result.endpoints.length}`);
+  if (result.truncated) {
+    lines.push("Warning: a scan cap stopped the walk early, so this is a partial result.");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function printScanError(asJson: boolean, code: string, message: string): void {
+  if (asJson) {
+    console.log(JSON.stringify({ frameworks: [], endpoints: [], error: { code, message } }, null, 2));
+    return;
+  }
+  console.error(`${code}: ${message}`);
+}
+
 async function currentCatalogSnapshot(args: string[], client: PremanClient) {
   const mcpId = valueFor(args, "--mcp-id");
   if (mcpId) {
@@ -972,6 +1039,8 @@ Usage:
   npx preman-sdk assert --file preman.assert.json
   npx preman-sdk test --suite preman.agent-tests.json
   npx preman-sdk test --suite preman.agent-tests.json --json --bail
+  npx preman-sdk scan --dir . --json
+  npx preman-sdk scan --dir ./service --min-endpoints 1
   npx preman-sdk typegen --file endpoints.json --out preman-endpoints.ts
   npx preman-sdk typegen --mcp-id mcp_123 --client --out preman-tools.ts
   npx preman-sdk install-snippet --target cursor --server-name auth-mcp --url https://api.preman.live/h/.../mcp --token-env PREMAN_CONSUMER_TOKEN --write
@@ -1030,6 +1099,8 @@ Options:
   --filter                  Run a single test id from the suite
   --bail                    Stop the suite at the first non-passing test
   --dry-run                 Parse and list the suite without running it
+  --dir                     Directory to scan for endpoints (default: current directory)
+  --min-endpoints           Fail scan with exit code 1 below this endpoint count
   --client                  For typegen --mcp-id, emit a thin callTool wrapper
   --consumer-label          Initial consumer token label (default: default-consumer)
   --idempotency-key         Idempotency key for write operations

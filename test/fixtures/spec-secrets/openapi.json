@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Spec With Planted Secrets",
+    "version": "1.0.0",
+    "description": "Every pm_live_ value in this file is fake bait. Scan output must never carry one."
+  },
+  "paths": {
+    "/charges": {
+      "post": {
+        "summary": "Create a charge",
+        "description": "Call it with pm_live_FAKEinDescription in the header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "api_key": {
+                    "type": "string",
+                    "description": "pm_live_FAKEinDescription",
+                    "example": "pm_live_FAKEinExample",
+                    "default": "pm_live_FAKEinDefault",
+                    "enum": ["pm_live_FAKEinEnum"]
+                  }
+                },
+                "required": ["api_key"]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "pm_test_FAKEinQueryExample",
+              "default": "pm_test_FAKEinQueryDefault"
+            }
+          }
+        ],
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    }
+  }
+}

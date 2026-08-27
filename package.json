@@ -64,6 +64,10 @@
     "./platform-tools": {
       "types": "./dist/platform-tools.d.ts",
       "import": "./dist/platform-tools.js"
+    },
+    "./scan": {
+      "types": "./dist/scan.d.ts",
+      "import": "./dist/scan.js"
     }
   },
   "main": "./dist/index.js",

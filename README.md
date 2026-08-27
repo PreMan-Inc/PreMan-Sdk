@@ -267,6 +267,128 @@ npx preman-sdk hosted-mcps
 npx preman-sdk hosted-mcps --id mcp_123
 ```
 
+## Endpoint discovery from a checkout
+
+`preman scan` reads a source tree and reports the HTTP routes it exposes. It is
+deterministic and offline: no network call, no model call, and the same tree
+always produces the same result. Like `preman assert`, it does not call the
+PreMan API and does not require `PREMAN_API_KEY`.
+
+```bash
+npx preman-sdk scan --dir ./service
+npx preman-sdk scan --dir ./service --json
+npx preman-sdk scan --dir ./service --min-endpoints 10
+```
+
+`--dir` is the directory to walk (default: the current directory). `--json`
+prints the full result instead of the text summary. `--min-endpoints N` sets a
+floor: the scan still prints its result, but exits 1 when it found fewer than
+`N` endpoints, which turns a router that silently stopped registering routes
+into a failing CI step.
+
+The text output lists every route with the file and line it came from:
+
+```text
+Scanned: ./service
+Frameworks: fastapi
+Specs: openapi.json
+  GET    /api/v1/items/{item_id}  (routers/items.py:8)
+  PUT    /api/v1/items/{item_id}  (routers/items.py:13)
+  GET    /api/v1/users  (routers/users.py:8)
+  DELETE /api/v1/users/{user_id}  (routers/users.py:18)
+  GET    /api/v1/users/{user_id}  (routers/users.py:13)
+  GET    /health  (main.py:13)
+  GET    /legacy  (main.py:28)
+  POST   /legacy  (main.py:28)
+  GET    /reports/summary  (openapi.json)
+  POST   /users  (main.py:23)
+  GET    /users/{user_id}  (main.py:18)
+Files read: 7
+Total endpoints: 11
+```
+
+Two frameworks are recognized today: FastAPI (`.py`) and Express (`.js`,
+`.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx`). Routes read from source carry
+confidence `0.9`. Path templates are normalized to one syntax, so
+`/users/:id`, `/users/{id}` and `/users/42` all become `/users/{id}`.
+
+Any committed `openapi*.json` or `swagger*.json` file under the scanned
+directory is parsed as well, with the same reader `preman import openapi
+--file` uses, and merged field-wise with the routes found in source. Neither
+side discards the other: the spec is authoritative for what it states, so a
+spec-stated route gets confidence `1` and contributes its `tags` and
+`request_body_schema` verbatim, while the source keeps the `source_location`
+the spec cannot know. A route that exists only in the spec is reported with the
+spec file as its location.
+
+```json
+{
+  "method": "POST",
+  "path_template": "/users",
+  "source_location": "main.py:23",
+  "confidence": 1,
+  "tags": [
+    "users"
+  ],
+  "request_body_schema": {
+    "type": "object",
+    "properties": {
+      "email": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "email"
+    ]
+  }
+}
+```
+
+Endpoint field names are the shape `register_discovered_endpoints` accepts, so
+scan output feeds the hosted API with no translation.
+
+A spec that is found but cannot be used is reported rather than ignored, so the
+result never implies a spec was read when it was not:
+
+```text
+Spec not used: openapi.yaml — YAML specs are not read: the SDK has no runtime dependencies and ships no YAML parser. Convert it to JSON, or import it with `preman import openapi --file`.
+```
+
+A scan that finds nothing fails loudly instead of returning an empty list. An
+empty `[]` reads as "this service has no endpoints" when the truth is "nothing
+here could be read", so the command exits 2 and names every reason:
+
+```text
+invalid_config: No adapter matched ./empty-svc. Tried: fastapi, express. No committed OpenAPI or Swagger spec was found either.
+```
+
+Exit codes: `0` when the scan succeeded, `1` when it succeeded but found fewer
+endpoints than `--min-endpoints`, and `2` when the directory could not be
+scanned, no adapter matched, or `--min-endpoints` was not a whole number.
+
+Programmatic use:
+
+```ts
+import { scanDirectory } from "preman-sdk/scan";
+
+const result = scanDirectory({ dir: "./service" });
+// result.frameworks -> ["fastapi"]
+// result.endpoints.length -> 11
+// result.specs -> ["openapi.json"]
+// result.truncated -> false
+```
+
+`scanDirectory()` throws `PremanConfigError` where the CLI exits 2. `truncated`
+is `true` when a file-count or byte budget stopped the walk, in which case the
+result describes only part of the tree.
+
+Known limits: two of the eight frameworks in the discovery scope are
+implemented so far, YAML specs are not parsed, and a router mounted with a
+prefix in another file has its prefix left unjoined.
+
 ## State assertions and read-only probes
 
 `preman assert` evaluates deterministic state checks against either a supplied
@@ -876,6 +998,8 @@ npx preman-sdk tunnel --name "Local Files MCP" --command npx --arg -y --arg @mod
 npx preman-sdk token --mcp-id mcp_123 --consumer-label cursor-agent --scopes auth:login --rate-limit-rpm 60
 npx preman-sdk token list --mcp-id mcp_123
 npx preman-sdk token revoke --mcp-id mcp_123 --token-id token_123
+npx preman-sdk scan --dir ./service --json
+npx preman-sdk scan --dir ./service --min-endpoints 10
 npx preman-sdk import openapi --file openapi.json --out endpoints.json
 npx preman-sdk apply --file preman.config.json --dry-run
 npx preman-sdk snapshot --mcp-id mcp_123 --out preman-catalog.snapshot.json
@@ -935,6 +1059,7 @@ Self-healing endpoint workflow:
 
 Endpoint discovery and testing:
 
+- `scanDirectory()` -> reads a checkout offline and reports the endpoints it exposes
 - `registerEndpoints()` -> creates or updates a playground session
 - `fromOpenApi()` / `fromPostmanCollection()` -> converts API docs into endpoint definitions
 - `generateEndpointTypes()` -> generates TypeScript types from endpoint schemas

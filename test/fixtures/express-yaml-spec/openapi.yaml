@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info:
+  title: Yaml Beside A Source Tree
+  version: 1.0.0
+paths:
+  /ping:
+    get:
+      responses:
+        "200":
+          description: OK
+  /yaml-only:
+    get:
+      responses:
+        "200":
+          description: OK

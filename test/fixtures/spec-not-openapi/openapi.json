@@ -1,0 +1,7 @@
+{
+  "name": "valid JSON, but not an OpenAPI document",
+  "version": "1.0.0",
+  "components": {
+    "schemas": {}
+  }
+}

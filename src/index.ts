@@ -82,6 +82,16 @@ export {
   toOpenAITools,
 } from "./platform-tools.js";
 export type { CreatePremanAgentToolsOptions, PremanAgentTool } from "./platform-tools.js";
+export { normalizePathTemplate, scanDirectory, sortEndpoints } from "./scan.js";
+export { expressAdapter } from "./scan-express.js";
+export { fastapiAdapter } from "./scan-fastapi.js";
+export type {
+  DiscoveredEndpoint,
+  FrameworkAdapter,
+  ScanOptions,
+  ScanResult,
+  SourceFile,
+} from "./scan.js";
 export type {
   AddAppMemberRequest,
   AddAppMemberResponse,
