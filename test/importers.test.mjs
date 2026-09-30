@@ -214,3 +214,23 @@ test("fromPostmanCollection accepts JSON strings and converts colon path params"
     },
   ]);
 });
+
+test("fromPostmanCollection keeps Postman variables in the URL path", () => {
+  const endpoints = fromPostmanCollection({
+    item: [
+      { request: { method: "GET", url: "https://api.example.com/users/{{userId}}/posts?limit=10" } },
+      { request: { method: "GET", url: "https://{{host}}/users/{{userId}}" } },
+      { request: { method: "GET", url: { raw: "{{baseUrl}}/users/{{userId}}", path: ["users", "{{userId}}"] } } },
+      { request: { method: "GET", url: "https://{{host}}/users/:id" } },
+      { request: { method: "GET", url: "https://api.example.com/users/{{userId}}#profile" } },
+    ],
+  });
+
+  assert.deepEqual(endpoints.map((endpoint) => endpoint.path), [
+    "/users/{{userId}}/posts",
+    "/users/{{userId}}",
+    "/users/{{userId}}",
+    "/users/{id}",
+    "/users/{{userId}}",
+  ]);
+});

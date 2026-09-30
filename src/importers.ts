@@ -148,8 +148,13 @@ function postmanPath(urlValue: unknown): string | undefined {
 }
 
 function pathFromUrl(value: string): string {
-  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(value)) {
-    const withoutVariables = value.replace(/\{\{[^}]+\}\}/g, "placeholder.local");
+  const origin = /^[a-z][a-z\d+\-.]*:\/\/[^/?#]*/i.exec(value)?.[0];
+  // A Postman variable in the path ("/users/{{userId}}") has to survive as is,
+  // and URL parsing would percent-encode it, so only the host is substituted
+  // and such URLs go to the best-effort parser below.
+  const rest = origin === undefined ? "" : value.slice(origin.length);
+  if (origin !== undefined && !/^[^?#]*\{\{/.test(rest)) {
+    const withoutVariables = origin.replace(/\{\{[^}]+\}\}/g, "placeholder.local") + rest;
     try {
       return normalizePath(new URL(withoutVariables).pathname);
     } catch {
@@ -157,7 +162,7 @@ function pathFromUrl(value: string): string {
     }
   }
 
-  const [withoutQuery = ""] = value.split("?");
+  const [withoutQuery = ""] = value.split(/[?#]/);
   const withoutProtocol = withoutQuery.replace(/^[a-z][a-z\d+\-.]*:\/\/[^/]+/i, "");
   const withoutVariableHost = withoutProtocol.replace(/^\{\{[^}]+\}\}/, "");
   return normalizePath(withoutVariableHost);
