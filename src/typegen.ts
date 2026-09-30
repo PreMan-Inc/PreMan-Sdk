@@ -94,7 +94,7 @@ export function schemaToType(schema: JsonSchema | undefined): string {
   }
   const allOf = schema["allOf"];
   if (Array.isArray(allOf) && allOf.length) {
-    return allOf.map((item) => schemaToType(asSchema(item))).join(" & ");
+    return allOf.map((item) => grouped(schemaToType(asSchema(item)))).join(" & ");
   }
   if (schema["enum"] && Array.isArray(schema["enum"])) {
     return schema["enum"].map((value) => JSON.stringify(value)).join(" | ");
@@ -108,10 +108,17 @@ export function schemaToType(schema: JsonSchema | undefined): string {
   if (type === "number" || type === "integer") return "number";
   if (type === "boolean") return "boolean";
   if (type === "null") return "null";
-  if (type === "array") return `${schemaToType(asSchema(schema["items"]))}[]`;
+  if (type === "array") return `${grouped(schemaToType(asSchema(schema["items"])))}[]`;
   if (type === "object" || schema["properties"]) return objectSchemaToType(schema);
   if (schema["additionalProperties"]) return "Record<string, unknown>";
   return "unknown";
+}
+
+// `string | null[]` is a union with an array of nulls, and `a | b & c` binds as
+// `a | (b & c)`, so a union or intersection used as an operand needs parentheses.
+// Extra parentheses (e.g. around an object literal) are harmless.
+function grouped(type: string): string {
+  return /[|&]/.test(type) ? `(${type})` : type;
 }
 
 function objectSchemaToType(schema: JsonSchema): string {

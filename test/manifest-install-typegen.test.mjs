@@ -13,6 +13,7 @@ import {
   normalizeHostedMcpCatalog,
   previewManifest,
   resolveSecret,
+  schemaToType,
   secretFromEnv,
   writeMcpInstall,
 } from "../dist/index.js";
@@ -70,6 +71,19 @@ test("typegen emits endpoint request and response types", () => {
   assert.match(output, /export namespace PremanEndpoints/);
   assert.match(output, /export type PostAuthLoginRequest/);
   assert.match(output, /"access_token": string/);
+});
+
+test("typegen keeps union and intersection members grouped inside arrays and allOf", () => {
+  assert.equal(schemaToType({ type: "array", items: { anyOf: [{ type: "string" }, { type: "number" }] } }), "(string | number)[]");
+  assert.equal(schemaToType({ type: "array", items: { type: "string", nullable: true } }), "(string | null)[]");
+  assert.equal(schemaToType({ type: "array", items: { type: ["string", "null"] } }), "(string | null)[]");
+  assert.equal(schemaToType({ type: "array", items: { enum: ["a", "b"] } }), '("a" | "b")[]');
+  assert.equal(schemaToType({ type: "array", items: { type: "array", items: { type: "string" } } }), "string[][]");
+  assert.equal(schemaToType({ type: "array", items: { type: "string" } }), "string[]");
+  assert.equal(
+    schemaToType({ allOf: [{ anyOf: [{ type: "string" }, { type: "number" }] }, { enum: ["x"] }] }),
+    '(string | number) & "x"',
+  );
 });
 
 test("typegen emits hosted MCP tool catalog wrappers", () => {
