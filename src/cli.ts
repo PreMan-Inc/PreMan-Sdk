@@ -95,31 +95,33 @@ async function main(): Promise<void> {
   }
 
   const config = await readConfig();
-  const client = new PremanClient(omitUndefined({
+  // Built on first use so offline subcommands keep working without an API key.
+  let premanClient: PremanClient | undefined;
+  const client = (): PremanClient => premanClient ??= new PremanClient(omitUndefined({
     apiKey: process.env["PREMAN_API_KEY"] ?? config.apiKey,
     apiUrl: process.env["PREMAN_API_URL"] ?? config.apiUrl,
     appUrl: process.env["PREMAN_APP_URL"] ?? config.appUrl,
   }));
 
   if (command === "status") {
-    const capabilities = await client.getCapabilities();
+    const capabilities = await client().getCapabilities();
     console.log(JSON.stringify({
-      apiUrl: client.apiUrl,
-      appUrl: client.appUrl,
-      dashboardUrl: client.dashboardUrl(),
+      apiUrl: client().apiUrl,
+      appUrl: client().appUrl,
+      dashboardUrl: client().dashboardUrl(),
       capabilities,
     }, null, 2));
     return;
   }
 
   if (command === "capabilities") {
-    console.log(JSON.stringify(await client.getCapabilities(), null, 2));
+    console.log(JSON.stringify(await client().getCapabilities(), null, 2));
     return;
   }
 
   if (command === "monitor") {
     const endpointId = requiredValue(args, "--endpoint-id", "monitor requires --endpoint-id endpoint_...");
-    console.log(JSON.stringify(await client.configureEndpointProbe({
+    console.log(JSON.stringify(await client().configureEndpointProbe({
       endpointId,
       enabled: !hasFlag(args, "--disabled"),
       intervalSeconds: numberFor(args, "--interval-seconds"),
@@ -131,12 +133,12 @@ async function main(): Promise<void> {
   }
 
   if (command === "probes") {
-    console.log(JSON.stringify(await client.listEndpointProbes(), null, 2));
+    console.log(JSON.stringify(await client().listEndpointProbes(), null, 2));
     return;
   }
 
   if (command === "probe-results") {
-    console.log(JSON.stringify(await client.listEndpointProbeResults({
+    console.log(JSON.stringify(await client().listEndpointProbeResults({
       endpointId: requiredValue(args, "--endpoint-id", "probe-results requires --endpoint-id endpoint_..."),
       limit: numberFor(args, "--limit"),
     }), null, 2));
@@ -144,7 +146,7 @@ async function main(): Promise<void> {
   }
 
   if (command === "healing-rule") {
-    console.log(JSON.stringify(await client.createHealingRule({
+    console.log(JSON.stringify(await client().createHealingRule({
       targetId: requiredValue(args, "--endpoint-id", "healing-rule requires --endpoint-id endpoint_..."),
       name: valueFor(args, "--name"),
       thresholdFailures: numberFor(args, "--after-failures"),
@@ -154,7 +156,7 @@ async function main(): Promise<void> {
   }
 
   if (command === "incidents") {
-    console.log(JSON.stringify(await client.listEndpointIncidents({
+    console.log(JSON.stringify(await client().listEndpointIncidents({
       ruleId: valueFor(args, "--rule-id"),
       limit: numberFor(args, "--limit"),
     }), null, 2));
@@ -164,8 +166,8 @@ async function main(): Promise<void> {
   if (command === "fixes") {
     const fixTaskId = valueFor(args, "--fix-task-id");
     console.log(JSON.stringify(fixTaskId
-      ? await client.getFixTask(fixTaskId)
-      : await client.listFixTasks({
+      ? await client().getFixTask(fixTaskId)
+      : await client().listFixTasks({
           status: valueFor(args, "--status") as "open" | "delivered" | "resolved" | undefined,
           limit: numberFor(args, "--limit"),
         }), null, 2));
@@ -174,12 +176,12 @@ async function main(): Promise<void> {
 
   if (command === "heal") {
     const fixTaskId = requiredValue(args, "--fix-task-id", "heal requires --fix-task-id fix_...");
-    const started = await client.startSelfHealing({
+    const started = await client().startSelfHealing({
       fixTaskId,
       request: { idempotencyKey: valueFor(args, "--idempotency-key") },
     });
     if (hasFlag(args, "--wait")) {
-      const completed = await client.waitForSelfHealing({
+      const completed = await client().waitForSelfHealing({
         fixTaskId,
         pollIntervalMs: numberFor(args, "--poll-ms"),
         timeoutMs: numberFor(args, "--timeout-ms"),
@@ -194,20 +196,20 @@ async function main(): Promise<void> {
   if (command === "upstream-hosting") {
     const mcpId = requiredValue(args, "--mcp-id", "upstream-hosting requires --mcp-id mcp_...");
     if (hasFlag(args, "--wait")) {
-      console.log(JSON.stringify(await client.waitForUpstreamHosting({
+      console.log(JSON.stringify(await client().waitForUpstreamHosting({
         mcpId,
         pollIntervalMs: numberFor(args, "--poll-ms"),
         timeoutMs: numberFor(args, "--timeout-ms"),
       }), null, 2));
       return;
     }
-    console.log(JSON.stringify(await client.getUpstreamHostingStatus({ mcpId }), null, 2));
+    console.log(JSON.stringify(await client().getUpstreamHostingStatus({ mcpId }), null, 2));
     return;
   }
 
   if (command === "register") {
     const endpoints = await endpointsFromRequiredFile(args, "register");
-    const result = await client.registerEndpoints(omitUndefined({
+    const result = await client().registerEndpoints(omitUndefined({
       sessionId: valueFor(args, "--session-id"),
       projectId: valueFor(args, "--project-id"),
       upstreamBaseUrl: valueFor(args, "--upstream"),
@@ -244,9 +246,9 @@ async function main(): Promise<void> {
       request: { idempotencyKey: valueFor(args, "--idempotency-key") },
     });
     validateUpstreamDeployRequest(deployRequest);
-    const result = await client.deployMcp(deployRequest);
+    const result = await client().deployMcp(deployRequest);
     if (hasFlag(args, "--wait-upstream") && result.upstreamMode === UPSTREAM_MODE_PREMAN) {
-      const hosting = await client.waitForUpstreamHosting({
+      const hosting = await client().waitForUpstreamHosting({
         mcpId: result.mcpId,
         pollIntervalMs: numberFor(args, "--poll-ms"),
         timeoutMs: numberFor(args, "--timeout-ms"),
@@ -264,7 +266,7 @@ async function main(): Promise<void> {
     if (upstreamBaseUrl && isLocalUpstreamUrl(upstreamBaseUrl) && !hasFlag(args, "--allow-local")) {
       throw new Error(localUpstreamMessage(upstreamBaseUrl));
     }
-    const result = await client.importFromDocs(omitUndefined({
+    const result = await client().importFromDocs(omitUndefined({
       docsUrl,
       name: valueFor(args, "--name"),
       slug: valueFor(args, "--slug"),
@@ -282,7 +284,7 @@ async function main(): Promise<void> {
   }
 
   if (command === "import-remote-mcp") {
-    const result = await client.importRemoteMcp(omitUndefined({
+    const result = await client().importRemoteMcp(omitUndefined({
       mcpUrl: requiredValue(args, "--url", "import-remote-mcp requires --url https://mcp.example.com/mcp"),
       name: valueFor(args, "--name"),
       slug: valueFor(args, "--slug"),
@@ -297,25 +299,25 @@ async function main(): Promise<void> {
   }
 
   if (command === "tunnel") {
-    await handleTunnelCommand(args, client);
+    await handleTunnelCommand(args, client());
     return;
   }
 
   if (command === "hosted-mcps") {
     const id = valueFor(args, "--id") ?? valueFor(args, "--mcp-id");
-    console.log(JSON.stringify(id ? await client.getHostedMcp(id) : await client.listHostedMcps(), null, 2));
+    console.log(JSON.stringify(id ? await client().getHostedMcp(id) : await client().listHostedMcps(), null, 2));
     return;
   }
 
   if (command === "apps") {
-    await handleAppsCommand(args, client);
+    await handleAppsCommand(args, client());
     return;
   }
 
   if (command === "discover") {
     const query = requiredValue(args, "--query", "discover requires --query \"find concerts\"");
     const limit = Number(valueFor(args, "--limit") ?? "10");
-    console.log(JSON.stringify(await client.discoverCapabilities({ query, limit }), null, 2));
+    console.log(JSON.stringify(await client().discoverCapabilities({ query, limit }), null, 2));
     return;
   }
 
@@ -328,18 +330,18 @@ async function main(): Promise<void> {
     } catch {
       throw new Error("call-tool --args must be valid JSON");
     }
-    console.log(JSON.stringify(await client.callPlatformTool({ tool, arguments: parsed }), null, 2));
+    console.log(JSON.stringify(await client().callPlatformTool({ tool, arguments: parsed }), null, 2));
     return;
   }
 
   if (command === "token") {
-    await handleTokenCommand(args, client);
+    await handleTokenCommand(args, client());
     return;
   }
 
   if (command === "tokens") {
     const mcpId = requiredValue(args, "--mcp-id", "tokens requires --mcp-id mcp_...");
-    console.log(JSON.stringify(await client.listTokens({ mcpId, includeRevoked: hasFlag(args, "--include-revoked") }), null, 2));
+    console.log(JSON.stringify(await client().listTokens({ mcpId, includeRevoked: hasFlag(args, "--include-revoked") }), null, 2));
     return;
   }
 
@@ -371,7 +373,7 @@ async function main(): Promise<void> {
   if (command === "typegen") {
     const mcpId = valueFor(args, "--mcp-id");
     const text = mcpId
-      ? generateHostedMcpToolTypes((await client.getHostedMcpCatalog(mcpId)).catalog, {
+      ? generateHostedMcpToolTypes((await client().getHostedMcpCatalog(mcpId)).catalog, {
         namespace: valueFor(args, "--namespace"),
         client: hasFlag(args, "--client"),
       })
@@ -436,7 +438,7 @@ async function handleAppsCommand(args: string[], client: PremanClient): Promise<
   console.log(JSON.stringify(await client.listApps(), null, 2));
 }
 
-async function handleSnapshotCommand(args: string[], client: PremanClient): Promise<void> {
+async function handleSnapshotCommand(args: string[], client: () => PremanClient): Promise<void> {
   const current = await currentCatalogSnapshot(args, client);
   const text = `${JSON.stringify(current, null, 2)}\n`;
   const out = valueFor(args, "--out");
@@ -448,7 +450,7 @@ async function handleSnapshotCommand(args: string[], client: PremanClient): Prom
   console.log(text);
 }
 
-async function handleDiffCommand(args: string[], client: PremanClient): Promise<void> {
+async function handleDiffCommand(args: string[], client: () => PremanClient): Promise<void> {
   const approvedFile = requiredValue(args, "--approved", "diff requires --approved preman-catalog.snapshot.json");
   const approved = parseCatalogSnapshot(await readFile(approvedFile, "utf8"));
   const current = await currentCatalogSnapshot(args, client);
@@ -591,15 +593,15 @@ function printTestError(asJson: boolean, code: string, message: string): void {
   console.error(`${code}: ${message}`);
 }
 
-async function currentCatalogSnapshot(args: string[], client: PremanClient) {
+async function currentCatalogSnapshot(args: string[], client: () => PremanClient) {
   const mcpId = valueFor(args, "--mcp-id");
   if (mcpId) {
-    return createCatalogSnapshot((await client.getHostedMcpCatalog(mcpId)).catalog);
+    return createCatalogSnapshot((await client().getHostedMcpCatalog(mcpId)).catalog);
   }
 
   const docsUrl = valueFor(args, "--url") ?? valueFor(args, "--docs-url");
   if (docsUrl) {
-    const preview = await client.importFromDocs(omitUndefined({
+    const preview = await client().importFromDocs(omitUndefined({
       docsUrl,
       name: valueFor(args, "--name"),
       upstreamBaseUrl: valueFor(args, "--upstream"),
@@ -667,7 +669,7 @@ async function handleTokenCommand(args: string[], client: PremanClient): Promise
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function handleImportCommand(args: string[], client: PremanClient): Promise<void> {
+async function handleImportCommand(args: string[], client: () => PremanClient): Promise<void> {
   const kind = args[0];
   const file = requiredValue(args, "--file", "import requires --file spec.json");
   const raw = await readFile(file, "utf8");
@@ -685,7 +687,7 @@ async function handleImportCommand(args: string[], client: PremanClient): Promis
   if (hasFlag(args, "--deploy")) {
     const upstreamBaseUrl = requiredValue(args, "--upstream", "import --deploy requires --upstream https://api.example.com");
     if (isLocalUpstreamUrl(upstreamBaseUrl) && !hasFlag(args, "--allow-local")) throw new Error(localUpstreamMessage(upstreamBaseUrl));
-    console.log(JSON.stringify(await client.deployMcp({
+    console.log(JSON.stringify(await client().deployMcp({
       name: valueFor(args, "--name") ?? "Imported MCP",
       upstreamBaseUrl,
       endpoints,
@@ -695,7 +697,7 @@ async function handleImportCommand(args: string[], client: PremanClient): Promis
   }
 
   if (hasFlag(args, "--register")) {
-    console.log(JSON.stringify(await client.registerEndpoints({
+    console.log(JSON.stringify(await client().registerEndpoints({
       upstreamBaseUrl: valueFor(args, "--upstream"),
       intent: valueFor(args, "--intent") ?? `Imported ${kind} endpoints`,
       endpoints,
@@ -706,7 +708,7 @@ async function handleImportCommand(args: string[], client: PremanClient): Promis
   console.log(text);
 }
 
-async function handleApplyCommand(args: string[], client: PremanClient): Promise<void> {
+async function handleApplyCommand(args: string[], client: () => PremanClient): Promise<void> {
   const file = requiredValue(args, "--file", "apply requires --file preman.config.json");
   const manifest = await readManifest(file);
   const plan = previewManifest(manifest);
@@ -715,7 +717,7 @@ async function handleApplyCommand(args: string[], client: PremanClient): Promise
     return;
   }
   if (!plan.valid) throw new Error(`Invalid manifest: ${plan.errors.join("; ")}`);
-  const session = await client.registerEndpoints({
+  const session = await client().registerEndpoints({
     upstreamBaseUrl: manifest.upstream,
     intent: manifest.intent,
     endpoints: manifest.endpoints,
@@ -729,7 +731,7 @@ async function handleApplyCommand(args: string[], client: PremanClient): Promise
   if (upstreamMode === UPSTREAM_MODE_EXTERNAL && manifest.upstream && isLocalUpstreamUrl(manifest.upstream) && !hasFlag(args, "--allow-local")) {
     throw new Error(localUpstreamMessage(manifest.upstream));
   }
-  const deploy = await client.deployMcp(omitUndefined({
+  const deploy = await client().deployMcp(omitUndefined({
     sessionId: session.sessionId,
     name: manifest.deploy?.name ?? manifest.name ?? "Manifest MCP",
     upstreamMode,
